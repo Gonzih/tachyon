@@ -79,12 +79,7 @@
     --d-dim2: rgba(255,255,255,.7); --d-track2: rgba(255,255,255,.13); --d-pill: #000;
     --d-pillfg: #fff; --d-track: rgba(255,255,255,.2); }
   .stage.t-dark { background: linear-gradient(135deg, #16333a 0%, #1f4b55 40%, #3a5f57 70%, #6d4a33 100%); }
-  .themebtn { position: absolute; top: 16px; right: 16px; z-index: 6; cursor: pointer;
-    background: rgba(0,0,0,.25); color: #fff; border: 1px solid rgba(255,255,255,.25);
-    border-radius: 50%; width: 32px; height: 32px; font-size: 15px; line-height: 1;
-    display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
-  .themebtn:hover { background: rgba(0,0,0,.4); }
-  .stage.t-light .dpill { box-shadow: 0 8px 32px rgba(0,0,0,.25), inset 0 0 0 1px rgba(0,0,0,.06); }
+    .stage.t-light .dpill { box-shadow: 0 8px 32px rgba(0,0,0,.25), inset 0 0 0 1px rgba(0,0,0,.06); }
   .arc { fill: none; stroke-width: 3.5; stroke-linecap: round;
          transform: rotate(-90deg); transform-origin: center;
          stroke-dasharray: 100.5; animation: fill-arc 1.4s ease-out .8s both; }
@@ -173,8 +168,7 @@
     .dpill { transform: translateY(-50%) scale(.92); transform-origin: right center; }
     .dpill.hidden { transform: translate(76px, -50%) scale(.92); }
     .dpop { width: min(270px, calc(100vw - 150px)); right: 74px; padding: 12px; }
-    .themebtn { top: 12px; right: 12px; }
-  }
+    }
 </style>
 </head>
 <body>
@@ -196,8 +190,7 @@
 <section>
   <div class="wrap">
     <div class="stage t-light" id="stage" aria-label="Interactive demo of the Tachyon edge pill">
-      <button class="themebtn" id="themebtn" aria-label="Toggle demo theme">☾</button>
-      <!-- fake macOS window that periodically overlaps the pill -->
+            <!-- fake macOS window that periodically overlaps the pill -->
       <div class="fakewin" id="fakewin">
         <div class="fakebar"><i class="tl r"></i><i class="tl y"></i><i class="tl g"></i><span>emacs — tachyon.el — *scratch*</span></div>
         <div class="fakebody">
@@ -351,13 +344,11 @@
     stage.classList.toggle('t-light');
     stage.classList.toggle('t-dark');
     document.body.classList.toggle('dark', stage.classList.contains('t-dark'));
-    document.getElementById('themebtn').textContent = stage.classList.contains('t-light') ? '☾' : '☀';
   }
   // Seed demo + page from the visitor's system theme.
   if (matchMedia('(prefers-color-scheme: dark)').matches && stage.classList.contains('t-light')) {
     flipTheme();
   }
-  document.getElementById('themebtn').addEventListener('click', flipTheme);
 
   // Autoplay: window overlaps → shim → cursor to edge → reveal. Pauses on hover.
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
