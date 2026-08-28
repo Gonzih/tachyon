@@ -46,7 +46,8 @@
   .btn.primary { background: var(--fg); color: var(--bg); border-color: transparent; }
   .btn.ghost:hover, .btn.primary:hover { opacity: .85; }
   .brew {
-    margin-top: 18px; display: inline-block; font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+    margin-top: 18px; display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+    font: 13px ui-monospace, "SF Mono", Menlo, monospace;
     transition: background .6s, border-color .6s, color .6s;
     color: var(--muted); background: var(--card); border: 1px solid var(--border);
     padding: 9px 16px; border-radius: 10px; user-select: all;
@@ -169,6 +170,10 @@
     .dpill.hidden { transform: translate(76px, -50%) scale(.92); }
     .dpop { width: min(270px, calc(100vw - 150px)); right: 74px; padding: 12px; }
     }
+  .copybtn { background: none; border: none; padding: 0; cursor: pointer;
+    color: var(--muted); display: inline-flex; align-items: center; }
+  .copybtn:hover { color: var(--fg); }
+  .copybtn.ok { color: var(--green); }
 </style>
 </head>
 <body>
@@ -182,7 +187,7 @@
       <a class="btn primary" href="https://github.com/Gonzih/tachyon/releases/latest">Download for macOS</a>
       <a class="btn ghost" href="https://github.com/Gonzih/tachyon">GitHub</a>
     </div>
-    <div><code class="brew">brew install --cask gonzih/tap/tachyon</code></div>
+    <div><code class="brew" id="brew" title="Click to copy">brew install --cask gonzih/tap/tachyon<button class="copybtn" id="copybtn" aria-label="Copy command"><svg id="copyicon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></code></div>
   </div>
 
   </header>
@@ -304,6 +309,20 @@
 
 <script>
 (function () {
+  const brew = document.getElementById('brew');
+  const copyBtn = document.getElementById('copybtn');
+  function copyBrew() {
+    navigator.clipboard.writeText('brew install --cask gonzih/tap/tachyon').then(() => {
+      copyBtn.classList.add('ok');
+      document.getElementById('copyicon').innerHTML = '<path d="M20 6L9 17l-5-5"/>';
+      setTimeout(() => {
+        copyBtn.classList.remove('ok');
+        document.getElementById('copyicon').innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
+      }, 1400);
+    });
+  }
+  brew.addEventListener('click', copyBrew);
+
   const stage = document.getElementById('stage');
   const pill = document.getElementById('dpill');
   const shim = document.getElementById('shim');
