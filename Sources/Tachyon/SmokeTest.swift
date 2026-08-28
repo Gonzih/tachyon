@@ -1,0 +1,80 @@
+import Foundation
+
+/// `Tachyon --smoke` — a headless diagnostic that runs every registered provider
+/// once and prints what it found, without opening a window.
+///
+/// This is the fastest way to validate a new provider against your own machine:
+/// see CONTRIBUTING.md. It is also what makes `swift build` meaningful in CI,
+/// where there is no display to attach to.
+enum SmokeTest {
+    static func runIfRequested() -> Bool {
+        guard CommandLine.arguments.contains("--smoke") else { return false }
+
+        let done = DispatchSemaphore(value: 0)
+        Task {
+            await run()
+            done.signal()
+        }
+        done.wait()
+        return true
+    }
+
+    private static func run() async {
+        print("Tachyon provider diagnostic\n")
+
+        for provider in ProviderRegistry.all {
+            let flag = provider.isExperimental ? " [experimental]" : ""
+            print("\(provider.displayName) (\(provider.id))\(flag)")
+
+            let presence = await provider.detect()
+            switch presence {
+            case .notInstalled:
+                print("  presence: not installed\n")
+                continue
+            case .notSignedIn(let guidance):
+                print("  presence: not signed in — \(guidance)\n")
+                continue
+            case .ready:
+                print("  presence: ready")
+            }
+
+            let state = await provider.snapshot()
+            switch state {
+            case .ok(let snapshot), .stale(let snapshot, _):
+                let freshness = state.isStale ? "stale" : "live"
+                print("  state: \(freshness), \(snapshot.windows.count) window(s)")
+                print("  ring: \(snapshot.primary.label) — \(format(snapshot.primary.percentUsed))")
+                for window in snapshot.windows {
+                    let reset = ResetFormat.resetText(window.resetsAt) ?? "no reset time"
+                    print("    · \(window.label): \(format(window.percentUsed))  (\(reset))")
+                }
+                if let detail = snapshot.detail { print("  plan: \(detail)") }
+            case .authError(let guidance):
+                print("  state: auth error — \(guidance)")
+            case .unavailable:
+                print("  state: unavailable")
+            }
+            print("")
+        }
+
+        // A wrong color band is invisible in a screenshot but loud in daily use,
+        // so the boundaries are asserted here rather than trusted.
+        print("Color bands (half-open):")
+        for percent in [0.0, 21, 49.9, 50, 69.9, 70, 89.9, 90, 100] {
+            print("  \(format(percent)) → \(bandName(percent))")
+        }
+    }
+
+    private static func format(_ percent: Double) -> String {
+        String(format: "%.0f%%", percent)
+    }
+
+    private static func bandName(_ percent: Double) -> String {
+        switch percent {
+        case ..<50: return "green"
+        case ..<70: return "yellow"
+        case ..<90: return "orange"
+        default: return "red"
+        }
+    }
+}

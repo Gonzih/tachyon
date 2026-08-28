@@ -1,0 +1,6 @@
+{
+  "name": "tachyon-site",
+  "compatibility_date": "2026-08-01",
+  "assets": { "directory": "." },
+  "routes": [{ "pattern": "tachyon.maksim.sh", "custom_domain": true }]
+}
