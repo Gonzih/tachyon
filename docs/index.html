@@ -112,7 +112,9 @@
     transition: transform .35s cubic-bezier(.2,.8,.3,1); }
   .dpill.hidden { transform: translate(76px, -50%); }
   /* Concave tapers: the pill flows out of the screen edge, as in the app */
-  .dpill::before, .dpill::after { content: ""; position: absolute; right: 0; width: 24px; height: 24px;
+  /* Tapers overlap the body by 1px — translateY(-50%) can land the body edge
+     on a half-pixel, and without the overlap the seam antialiases open. */
+  .dpill::before, .dpill::after { content: ""; position: absolute; right: 0; width: 24px; height: 25px;
     transition: background .5s; }
   .dpill::before { top: -24px;
     background: radial-gradient(circle at 0 0, transparent 23.5px, var(--d-pill) 24px); }
