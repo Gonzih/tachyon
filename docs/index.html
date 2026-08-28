@@ -80,7 +80,7 @@
     --d-dim2: rgba(255,255,255,.7); --d-track2: rgba(255,255,255,.13); --d-pill: #000;
     --d-pillfg: #fff; --d-track: rgba(255,255,255,.2); }
   .stage.t-dark { background: linear-gradient(135deg, #16333a 0%, #1f4b55 40%, #3a5f57 70%, #6d4a33 100%); }
-    .stage.t-light .dpill { box-shadow: 0 8px 32px rgba(0,0,0,.25), inset 0 0 0 1px rgba(0,0,0,.06); }
+    .stage.t-light .dpill { filter: drop-shadow(0 6px 18px rgba(0,0,0,.22)); }
   .arc { fill: none; stroke-width: 3.5; stroke-linecap: round;
          transform: rotate(-90deg); transform-origin: center;
          stroke-dasharray: 100.5; animation: fill-arc 1.4s ease-out .8s both; }
@@ -108,7 +108,7 @@
     width: 64px; padding: 18px 0; background: var(--d-pill); border-radius: 24px 0 0 24px;
     transition: background .5s;
     display: flex; flex-direction: column; gap: 14px; align-items: center;
-    box-shadow: 0 8px 32px rgba(0,0,0,.4); z-index: 3;
+    filter: drop-shadow(0 8px 22px rgba(0,0,0,.35)); z-index: 3;
     transition: transform .35s cubic-bezier(.2,.8,.3,1); }
   .dpill.hidden { transform: translate(76px, -50%); }
   /* Concave tapers: the pill flows out of the screen edge, as in the app */
