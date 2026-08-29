@@ -80,9 +80,9 @@ final class OmpProviderTests: XCTestCase {
         // The stale bounded window must not appear.
         XCTAssertFalse(snapshot.windows.contains { $0.label.contains("Old") })
 
-        // Footer: last-used model from model_usage, trimmed to its last path
-        // segment — the config default must NOT win while usage rows exist.
-        XCTAssertEqual(snapshot.detail, "laguna-s-2.1:free")
+        // Footer: last-used model from model_usage as "provider · model" —
+        // the config default must NOT win while usage rows exist.
+        XCTAssertEqual(snapshot.detail, "openrouter · laguna-s-2.1:free")
     }
 
     func testFooterFallsBackToConfigDefaultWithoutModelUsage() async {
@@ -97,7 +97,7 @@ final class OmpProviderTests: XCTestCase {
         guard case .ok(let snapshot) = state else {
             return XCTFail("expected .ok, got \(state)")
         }
-        XCTAssertEqual(snapshot.detail, "nemotron-3-ultra-free")
+        XCTAssertEqual(snapshot.detail, "opencode-zen · nemotron-3-ultra-free")
     }
 
     func testMissingDatabaseIsNotSignedIn() async {

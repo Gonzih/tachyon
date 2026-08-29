@@ -258,8 +258,13 @@ actor OmpProvider: UsageProvider {
         return nil
     }
 
-    /// "openrouter/poolside/laguna-s-2.1:free" → "laguna-s-2.1:free"
+    /// "openrouter/poolside/laguna-s-2.1:free" → "openrouter · laguna-s-2.1:free"
+    /// (first segment = the provider omp routed through, last = the model;
+    /// author segments in between are noise at footer width).
     private static func shortModelName(_ key: String) -> String? {
-        key.split(separator: "/").last.map(String.init)
+        let segments = key.split(separator: "/")
+        guard let model = segments.last.map(String.init) else { return nil }
+        guard segments.count > 1 else { return model }
+        return "\(segments[0]) · \(model)"
     }
 }
