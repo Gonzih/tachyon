@@ -142,8 +142,10 @@ private struct ProviderPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                GlyphView(glyph: slot.glyph, size: 22, color: .primary)
+            HStack(spacing: 11) {
+                GlyphView(glyph: slot.glyph, size: 20, color: .primary)
+                    .frame(width: 36, height: 36)
+                    .background(RoundedRectangle(cornerRadius: 9).fill(.quaternary.opacity(0.5)))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(slot.shortName).font(.system(size: 16, weight: .semibold))
                     Text(statusLine).font(.system(size: 11)).foregroundStyle(.secondary)
@@ -158,12 +160,21 @@ private struct ProviderPane: View {
             }
 
             if !slot.providerSettings.isEmpty {
-                Divider()
-                ForEach(slot.providerSettings) { setting in
-                    SettingField(setting: setting, providerID: slot.id) {
-                        model.refresh(id: slot.id)
+                VStack(spacing: 0) {
+                    ForEach(Array(slot.providerSettings.enumerated()), id: \.element.id) { index, setting in
+                        if index > 0 { Divider().padding(.leading, 14) }
+                        SettingField(setting: setting, providerID: slot.id) {
+                            model.refresh(id: slot.id)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
                     }
                 }
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(.quaternary.opacity(0.5))
+                )
+                .padding(.top, 6)
             }
             Spacer()
         }
@@ -192,27 +203,43 @@ private struct SettingField: View {
     let onChange: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            switch setting.kind {
-            case .money(let defaultValue):
-                MoneyField(setting: setting, providerID: providerID,
-                           defaultValue: defaultValue, onChange: onChange)
-            case .toggle(let defaultValue):
-                Toggle(setting.title, isOn: Binding(
-                    get: { Settings.defaults.object(forKey: "provider.\(providerID).\(setting.key)") as? Bool ?? defaultValue },
-                    set: { Settings.defaults.set($0, forKey: "provider.\(providerID).\(setting.key)"); onChange() }
-                ))
-            case .choice(let options, let defaultValue):
-                Picker(setting.title, selection: Binding(
-                    get: { Settings.defaults.string(forKey: "provider.\(providerID).\(setting.key)") ?? defaultValue },
-                    set: { Settings.defaults.set($0, forKey: "provider.\(providerID).\(setting.key)"); onChange() }
-                )) {
-                    ForEach(options, id: \.self) { Text($0) }
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(setting.title).font(.system(size: 13, weight: .medium))
+                if let help = setting.help {
+                    Text(help)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if let help = setting.help {
-                Text(help).font(.system(size: 10.5)).foregroundStyle(.tertiary)
+            Spacer(minLength: 16)
+            control
+        }
+    }
+
+    @ViewBuilder private var control: some View {
+        switch setting.kind {
+        case .money(let defaultValue):
+            MoneyField(setting: setting, providerID: providerID,
+                       defaultValue: defaultValue, onChange: onChange)
+        case .toggle(let defaultValue):
+            Toggle("", isOn: Binding(
+                get: { Settings.defaults.object(forKey: "provider.\(providerID).\(setting.key)") as? Bool ?? defaultValue },
+                set: { Settings.defaults.set($0, forKey: "provider.\(providerID).\(setting.key)"); onChange() }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .labelsHidden()
+        case .choice(let options, let defaultValue):
+            Picker("", selection: Binding(
+                get: { Settings.defaults.string(forKey: "provider.\(providerID).\(setting.key)") ?? defaultValue },
+                set: { Settings.defaults.set($0, forKey: "provider.\(providerID).\(setting.key)"); onChange() }
+            )) {
+                ForEach(options, id: \.self) { Text($0) }
             }
+            .labelsHidden()
+            .frame(width: 140)
         }
     }
 }
@@ -226,19 +253,15 @@ private struct MoneyField: View {
     @State private var text: String = ""
 
     var body: some View {
-        HStack {
-            Text(setting.title).font(.system(size: 13))
-            Spacer()
-            TextField("none", text: $text)
-                .frame(width: 90)
-                .multilineTextAlignment(.trailing)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(commit)
-        }
-        .onAppear {
-            let stored = Settings.moneySetting(setting.key, provider: providerID) ?? defaultValue
-            text = stored.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "$\(Int($0))" : String(format: "$%.2f", $0) } ?? ""
-        }
+        TextField("none", text: $text)
+            .frame(width: 84)
+            .multilineTextAlignment(.trailing)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit(commit)
+            .onAppear {
+                let stored = Settings.moneySetting(setting.key, provider: providerID) ?? defaultValue
+                text = stored.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "$\(Int($0))" : String(format: "$%.2f", $0) } ?? ""
+            }
     }
 
     /// Empty or junk clears the setting (removes the key — never writes 0).
