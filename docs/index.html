@@ -292,7 +292,8 @@
 
 <section>
   <div class="wrap">
-    <p class="providers">Works with <b>Claude Code</b> · <b>Codex</b> · <b>Grok</b> · <b>Cursor</b> — <a href="https://github.com/Gonzih/tachyon/blob/main/CONTRIBUTING.md">add yours</a></p>
+    <p class="providers">Works with <b>Claude Code</b> · <b>Codex</b> · <b>Grok</b> · <b>Cursor</b> — <a href="#" id="addyours">add yours</a></p>
+    <p class="providers" id="copied-note" style="display:none">prompt copied — paste it into your coding agent, it adds itself</p>
   </div>
 </section>
 
@@ -324,6 +325,20 @@
     });
   }
   brew.addEventListener('click', copyBrew);
+  document.getElementById('addyours').addEventListener('click', (e) => {
+    e.preventDefault();
+    navigator.clipboard.writeText(`Add support for {YOUR HARNESS} to Tachyon, the macOS usage-rings app.
+
+1. git clone https://github.com/Gonzih/tachyon and read CONTRIBUTING.md — it defines the UsageProvider protocol and the acceptance checklist.
+2. Investigate how {YOUR HARNESS} stores credentials locally and where its usage/rate-limit data lives (endpoint, log files, or CLI output).
+3. Implement Sources/Tachyon/Providers/{Name}Provider.swift on the pattern of GrokProvider.swift, add one line to ProviderRegistry, add a glyph.
+4. Verify with \`swift run Tachyon --smoke\` — your provider must show real numbers, or degrade cleanly to "not signed in".
+5. Open a PR titled "provider: {name}".`).then(() => {
+      const n = document.getElementById('copied-note');
+      n.style.display = 'block';
+      setTimeout(() => { n.style.display = 'none'; }, 4000);
+    });
+  });
 
   const stage = document.getElementById('stage');
   const pill = document.getElementById('dpill');
