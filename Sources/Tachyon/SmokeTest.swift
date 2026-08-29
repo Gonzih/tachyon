@@ -67,6 +67,7 @@ enum SmokeTest {
     static func meterText(_ window: UsageWindow) -> String {
         if let percent = window.percentUsed { return format(percent) }
         if let spend = window.spendUSD { return UsageWindow.formatSpend(spend) + " spent" }
+        if let count = window.count { return "\(count) \(window.countUnit ?? "")" }
         return "-"
     }
 

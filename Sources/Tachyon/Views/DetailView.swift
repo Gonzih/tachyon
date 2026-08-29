@@ -119,6 +119,7 @@ private struct WindowRow: View {
         }
         if let percent = window.percentUsed { return "\(Int(percent.rounded()))% Used" }
         if let spend = window.spendUSD { return "\(UsageWindow.formatSpend(spend)) spent" }
+        if let count = window.count { return "\(count) \(window.countUnit ?? "")" }
         return ""
     }
 

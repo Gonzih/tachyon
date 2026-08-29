@@ -254,6 +254,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if let spend = slot.ringSpend {
             title += " — \(UsageWindow.formatSpend(spend))"
             if slot.state.isStale { title += " (stale)" }
+        } else if let count = slot.ringCount {
+            title += " — \(count)"
         } else if let guidance = slot.state.authGuidance {
             title += " — \(guidance)"
         }

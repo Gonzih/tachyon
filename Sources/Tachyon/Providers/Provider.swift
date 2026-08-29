@@ -24,6 +24,10 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
     let spendUSD: Double?
     /// User-set ceiling the spend is measured against, when any.
     let budgetUSD: Double?
+    /// Unbounded count meter (requests, runs…). Nil for other meters.
+    let count: Int?
+    /// Unit label for `count` ("requests"). Nil unless `count` is set.
+    let countUnit: String?
     let resetsAt: Date?
 
     var id: String { "\(label)-\(resetsAt?.timeIntervalSince1970 ?? -1)" }
@@ -33,6 +37,8 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.percentUsed = Usage.clampPercent(percentUsed)
         self.spendUSD = nil
         self.budgetUSD = nil
+        self.count = nil
+        self.countUnit = nil
         self.resetsAt = resetsAt
     }
 
@@ -41,6 +47,19 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.percentUsed = nil
         self.spendUSD = max(0, spendUSD)
         self.budgetUSD = nil
+        self.count = nil
+        self.countUnit = nil
+        self.resetsAt = resetsAt
+    }
+
+    /// Observed activity with no denominator: "42 requests".
+    init(label: String, count: Int, unit: String, resetsAt: Date?) {
+        self.label = label
+        self.percentUsed = nil
+        self.spendUSD = nil
+        self.budgetUSD = nil
+        self.count = max(0, count)
+        self.countUnit = unit
         self.resetsAt = resetsAt
     }
 
@@ -58,6 +77,8 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
             self.budgetUSD = nil
             self.percentUsed = nil
         }
+        self.count = nil
+        self.countUnit = nil
         self.resetsAt = resetsAt
     }
 
@@ -206,6 +227,7 @@ enum ProviderRegistry {
         CursorProvider(),
         OmpProvider(),
         OpenRouterProvider(),
+        OllamaProvider(),
     ]
 }
 

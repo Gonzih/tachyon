@@ -2,8 +2,8 @@
 
 # Tachyon
 
-Live rate-limit rings for Claude Code, Codex, Grok, Cursor, Oh My Pi and
-OpenRouter, docked to the edge of your screen. Native macOS, zero config.
+Live rate-limit rings for Claude Code, Codex, Grok, Cursor, Oh My Pi,
+OpenRouter and Ollama, docked to the edge of your screen. Native macOS, zero config.
 
 <p align="center"><img src="assets/tachyon-demo.gif" width="680" alt="Tachyon: shim on the screen edge, mouse in, pill reveals, popovers per provider"></p>
 
@@ -52,6 +52,7 @@ endpoints. Nothing to sign into, nothing to configure.
 | Cursor | `api2.cursor.sh` DashboardService, token from `state.vscdb` (read-only) | 120s |
 | Oh My Pi | `~/.omp/agent/agent.db` (read-only): quota windows + `cost_usd` history | 120s |
 | OpenRouter | `openrouter.ai/api/v1/auth/key` — key you add in Settings (Keychain-stored) | 120s |
+| Ollama | daemon log (read-only): observed request counts — no quota API exists yet | 120s + on request |
 
 Credentials, in order: env override → Keychain → the harness's own auth file.
 Oh My Pi needs none — its own database already carries quota windows and

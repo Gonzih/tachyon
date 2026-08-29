@@ -80,7 +80,12 @@ standalone quota usage API; per-response token usage is reported during
 requests" — registered "until a quota endpoint is available." Local ollama
 additionally has nothing to meter (no limits, no cost).
 
-Decision: no standalone provider — a ring that cannot be honest does not ship.
+Decision (superseded same day by Gonzih): ship an *observed activity* provider
+instead — request counts parsed from the daemon's GIN log (2xx POSTs to
+inference endpoints; log carries no model names, so no cloud/local split, and
+windows are labeled plainly as requests). New `count` meter added to
+UsageWindow for it. Experimental until verified against a signed-in cloud
+account. Original finding stands:
 Ollama Cloud used through omp is already metered transitively (omp records
 per-response cost in agent.db, which OmpProvider reads). Revisit when Ollama
 ships a quota endpoint; keys/identity likely under ~/.ollama.

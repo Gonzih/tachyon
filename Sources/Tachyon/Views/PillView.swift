@@ -131,7 +131,7 @@ struct RingModule: View {
     /// pre-first-snapshot states go to a bare track.
     private var contentOpacity: Double {
         if slot.state.isAuthError { return 0.5 }
-        if percent == nil && slot.ringSpend == nil { return 0.5 }
+        if percent == nil && slot.ringSpend == nil && slot.ringCount == nil { return 0.5 }
         // A reading one poll old is effectively fresh — dimming it just makes
         // the ring look sick every time the endpoint throttles once. Only dim
         // when the data is meaningfully old.
@@ -150,6 +150,7 @@ struct RingModule: View {
     private var labelText: String {
         if let percent { return "\(Int(percent.rounded()))%" }
         if let spend = slot.ringSpend { return UsageWindow.formatSpend(spend) }
+        if let count = slot.ringCount { return "\(count)" }
         return "–"
     }
 

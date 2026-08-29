@@ -58,6 +58,11 @@ struct ProviderSlot: Identifiable, Equatable {
         guard !awaitingFirstSnapshot else { return nil }
         return state.snapshot?.primary.spendUSD
     }
+
+    var ringCount: Int? {
+        guard !awaitingFirstSnapshot else { return nil }
+        return state.snapshot?.primary.count
+    }
 }
 
 @MainActor
