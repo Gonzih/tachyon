@@ -87,7 +87,7 @@
   @keyframes fill-arc { from { stroke-dashoffset: 100.5; } }
   .dpill .track { stroke: var(--d-track); transition: stroke .5s; }
   .track { fill: none; stroke: rgba(255,255,255,.2); stroke-width: 3.5; }
-  .stage { position: relative; height: 580px; border-radius: 0; overflow: hidden;
+  .stage { position: relative; height: 700px; border-radius: 0; overflow: hidden;
     border: none; width: 100vw; margin-left: calc(50% - 50vw);
     background: linear-gradient(135deg, #2d6a72 0%, #3e8894 34%, #7fb2a6 62%, #c98d5f 100%); }
   .hint { position: absolute; left: 16px; bottom: 12px; color: rgba(255,255,255,.75);
@@ -130,7 +130,7 @@
   .dpop h4 svg { flex: none; }
 
   .shim { position: absolute; right: 0; top: 50%; transform: translateY(-50%);
-    width: 5px; height: 300px; display: flex; flex-direction: column; gap: 2px;
+    width: 5px; height: 430px; display: flex; flex-direction: column; gap: 2px;
     z-index: 2; opacity: 0; transition: opacity .3s .2s; }
   .shim i { flex: 1; border-radius: 3px 0 0 3px; opacity: .85; }
   .shim.on { opacity: 1; }
@@ -165,7 +165,7 @@
     .tag { font-size: 16px; }
     .icon { width: 88px; height: 88px; border-radius: 20px; }
     .brew { font-size: 11.5px; padding: 8px 12px; }
-    .stage { height: 470px; }
+    .stage { height: 560px; } .dpill { transform: translateY(-50%) scale(.82); } .dpill.hidden { transform: translate(76px, -50%) scale(.82); }
     .fakewin { left: 14px; top: 30px; width: 62%; }
     .fakewin.over { width: calc(100% - 44px); }
     .dpill { transform: translateY(-50%) scale(.92); transform-origin: right center; }
@@ -217,7 +217,7 @@
       </div>
 
       <!-- color shim -->
-      <div class="shim" id="shim"><i style="background:var(--red)"></i><i style="background:var(--red)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i></div>
+      <div class="shim" id="shim"><i style="background:var(--red)"></i><i style="background:var(--red)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:rgba(255,255,255,.45)"></i><i style="background:var(--green)"></i></div>
 
       <!-- the pill -->
       <div class="dpill" id="dpill">
@@ -261,6 +261,25 @@
           </div>
           <div class="pct">21%</div>
         </div>
+        <div class="dring" data-p="omp">
+          <div class="ringbox">
+            <svg width="36" height="36" viewBox="0 0 36 36">
+              <circle class="track" cx="18" cy="18" r="16"/>
+            </svg>
+            <div class="glyphwrap"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M5.2 5.8L18.6 5.8L18.6 9.1L15.2 9.1L15.2 21.2L11.9 21.2L11.9 9.1L9.3 9.1L9.3 17.3L6.7 17.3L6.7 9.1L5.2 9.1Z"/></svg></div>
+          </div>
+          <div class="pct">$4.20</div>
+        </div>
+        <div class="dring" data-p="openrouter">
+          <div class="ringbox">
+            <svg width="36" height="36" viewBox="0 0 36 36">
+              <circle class="track" cx="18" cy="18" r="16"/>
+              <circle class="arc" cx="18" cy="18" r="16" stroke="var(--green)" stroke-dashoffset="66.3" style="animation-delay:1.4s"/>
+            </svg>
+            <div class="glyphwrap"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M18.654 3.87a5.087 5.087 0 110 10.174L23.7 19.09c.64.641.187 1.737-.72 1.737H8.48a8.479 8.479 0 010-16.958h10.175zM8.479 7.26a5.087 5.087 0 100 10.176 5.087 5.087 0 000-10.175z"/></svg></div>
+          </div>
+          <div class="pct">34%</div>
+        </div>
       </div>
 
       <!-- popovers -->
@@ -289,6 +308,23 @@
         <div class="row"><div class="rl"><span>Billing cycle</span><span class="dim">Resets Sep 15</span></div>
           <div class="bar"><i style="width:21%;background:var(--green)"></i></div><div class="cap">21% Used</div></div>
         <div class="foot">Pro</div>
+      </div>
+
+      <div class="dpop" id="pop-omp">
+        <h4><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M5.2 5.8L18.6 5.8L18.6 9.1L15.2 9.1L15.2 21.2L11.9 21.2L11.9 9.1L9.3 9.1L9.3 17.3L6.7 17.3L6.7 9.1L5.2 9.1Z"/></svg> Oh My Pi</h4>
+        <div class="row"><div class="rl"><span>Today</span></div>
+          <div class="bar"></div><div class="cap">$4.20 spent</div></div>
+        <div class="row"><div class="rl"><span>This month</span></div>
+          <div class="bar"></div><div class="cap">$23.10 spent</div></div>
+        <div class="foot">gpt-5.3-codex · local vllm</div>
+      </div>
+      <div class="dpop" id="pop-openrouter">
+        <h4><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M18.654 3.87a5.087 5.087 0 110 10.174L23.7 19.09c.64.641.187 1.737-.72 1.737H8.48a8.479 8.479 0 010-16.958h10.175zM8.479 7.26a5.087 5.087 0 100 10.176 5.087 5.087 0 000-10.175z"/></svg> OpenRouter</h4>
+        <div class="row"><div class="rl"><span>This month</span></div>
+          <div class="bar"><i style="width:34%;background:var(--green)"></i></div><div class="cap">$17.20 of $50</div></div>
+        <div class="row"><div class="rl"><span>All time</span></div>
+          <div class="bar"></div><div class="cap">$128 spent</div></div>
+        <div class="foot">Pay-as-you-go · budget set in Settings</div>
       </div>
 
       <!-- fake cursor for the autoplay story -->
@@ -359,7 +395,7 @@ NEVER LEAK CREDENTIALS. No tokens, keys, cookies, session ids, account ids, or e
   const shim = document.getElementById('shim');
   const win = document.getElementById('fakewin');
   const cursor = document.getElementById('fcursor');
-  const pops = { claude: document.getElementById('pop-claude'), codex: document.getElementById('pop-codex'), grok: document.getElementById('pop-grok'), cursor: document.getElementById('pop-cursor') };
+  const pops = Object.fromEntries(['claude','codex','grok','cursor','omp','openrouter'].map(k => [k, document.getElementById('pop-' + k)]));
 
   function showPop(key) {
     Object.values(pops).forEach(p => p.classList.remove('show'));
@@ -411,28 +447,25 @@ NEVER LEAK CREDENTIALS. No tokens, keys, cookies, session ids, account ids, or e
   // One full pass: tour every popover, then the presence story
   // (overlap → shim → mouse to edge → reveal), then flip the theme and run
   // it all again in the other appearance. Hands-free.
+  const tour = ['claude', 'codex', 'grok', 'cursor', 'omp', 'openrouter', null];
   setInterval(() => {
     if (paused) return;
-    step = (step + 1) % 9;
-    switch (step) {
-      case 0: showPop('claude'); break;
-      case 1: showPop('codex'); break;
-      case 2: showPop('grok'); break;
-      case 3: showPop('cursor'); break;
-      case 4: showPop(null); break;
-      case 5: // window slides over the pill → collapse to shim
+    step = (step + 1) % (tour.length + 4);
+    if (step < tour.length) { showPop(tour[step]); return; }
+    switch (step - tour.length) {
+      case 0: // window slides over the pill → collapse to shim
         win.classList.add('over');
         setTimeout(() => { if (!paused) { pill.classList.add('hidden'); shim.classList.add('on'); } }, 700);
         break;
-      case 6: // cursor travels to the edge
+      case 1: // cursor travels to the edge
         cursor.style.opacity = 1; at(stage.clientWidth * .45, stage.clientHeight * .3);
         setTimeout(() => { if (!paused) at(stage.clientWidth - 26, stage.clientHeight * .48); }, 80);
         break;
-      case 7: // pill reveals over the window
+      case 2: // pill reveals over the window
         pill.classList.remove('hidden'); shim.classList.remove('on');
         setTimeout(() => { cursor.style.opacity = 0; }, 900);
         break;
-      case 8: // window retreats, docked again — flip theme for the next pass
+      case 3: // window retreats — flip theme for the next pass
         win.classList.remove('over');
         setTimeout(() => { if (!paused) flipTheme(); }, 1100);
         break;
