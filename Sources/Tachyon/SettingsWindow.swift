@@ -63,7 +63,10 @@ private struct SettingsRoot: View {
             }
             .padding(10)
             .frame(width: 168)
-            .background(.quaternary.opacity(0.3))
+            .frame(maxHeight: .infinity)
+            // Material gives the sidebar a distinct elevation in BOTH themes —
+            // a flat quaternary wash disappears against dark window chrome.
+            .background(.ultraThinMaterial)
 
             Divider()
 
@@ -180,7 +183,7 @@ private struct ProviderPane: View {
                 }
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(.quaternary.opacity(0.5))
+                        .fill(.quaternary.opacity(0.55))
                 )
                 .padding(.top, 6)
             }
