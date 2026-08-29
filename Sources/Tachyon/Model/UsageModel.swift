@@ -35,10 +35,12 @@ struct ProviderSlot: Identifiable, Equatable {
     let shortName: String
     let glyph: ProviderGlyph
     let isExperimental: Bool
+    let providerSettings: [ProviderSetting]
     var presence: ProviderPresence = .notInstalled
     var state: ProviderState = .unavailable
     var enabled: Bool = true
     /// True until the first `snapshot()` completes.
+    var lastPolled: Date?
     var awaitingFirstSnapshot: Bool = true
 
     /// Rings render only for enabled + ready providers.
@@ -96,6 +98,7 @@ final class UsageModel {
                 shortName: provider.shortName,
                 glyph: provider.glyph,
                 isExperimental: provider.isExperimental,
+                providerSettings: provider.settings,
                 enabled: Settings.providerEnabled(provider.id)
             )
         }
@@ -246,6 +249,7 @@ final class UsageModel {
 
         slots[index].state = resolved
         slots[index].awaitingFirstSnapshot = false
+        slots[index].lastPolled = Date()
         onSlotsChanged?()
     }
 
@@ -263,13 +267,19 @@ final class UsageModel {
     // MARK: Commands
 
     /// Menu "Refresh now": re-poll everything and clear backoff.
+    /// Per-provider immediate re-poll — used by the Settings window after a
+    /// value changes so the ring reflects it without waiting out the interval.
+    func refresh(id: String) {
+        resetBackoff(id)
+        resetStaleClock(id)
+        let signal = refreshSignals[id]
+        Task { await signal?.fire() }
+    }
+
     func refreshAll() {
         Log.model.info("Manual refresh")
         for provider in providers {
-            resetBackoff(provider.id)
-            resetStaleClock(provider.id)
-            let signal = refreshSignals[provider.id]
-            Task { await signal?.fire() }
+            refresh(id: provider.id)
         }
     }
 

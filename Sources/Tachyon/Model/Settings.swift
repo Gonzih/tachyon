@@ -3,7 +3,7 @@ import Foundation
 
 /// Thin, typed façade over `UserDefaults`. All persistence lives here.
 enum Settings {
-    private static var defaults: UserDefaults { .standard }
+    static var defaults: UserDefaults { .standard }
 
     private enum Key {
         static let providerEnabledPrefix = "provider.enabled."
@@ -17,6 +17,30 @@ enum Settings {
         // Default on: zero-config means new providers light up without a visit to the menu.
         guard defaults.object(forKey: key) != nil else { return true }
         return defaults.bool(forKey: key)
+    }
+
+    /// Full key for a declared provider setting: "provider.<id>.<suffix>".
+    /// (Never collides with "provider.enabled.<id>" — no provider is named
+    /// "enabled".)
+    private static func settingKey(_ suffix: String, provider id: String) -> String {
+        "provider.\(id).\(suffix)"
+    }
+
+    /// Money: nil-safe — a missing key is nil, never 0. Clearing removes the
+    /// key rather than writing 0 (0 would read as "budget of zero").
+    static func moneySetting(_ suffix: String, provider id: String) -> Double? {
+        guard let value = defaults.object(forKey: settingKey(suffix, provider: id)) as? Double,
+              value > 0, value.isFinite else { return nil }
+        return value
+    }
+
+    static func setMoneySetting(_ value: Double?, suffix: String, provider id: String) {
+        let key = settingKey(suffix, provider: id)
+        if let value, value > 0, value.isFinite {
+            defaults.set(value, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     static func setProviderEnabled(_ enabled: Bool, for id: String) {

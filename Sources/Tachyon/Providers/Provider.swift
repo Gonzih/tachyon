@@ -22,6 +22,8 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
     let percentUsed: Double?
     /// Unbounded cost meter, in USD. Nil for percent meters.
     let spendUSD: Double?
+    /// User-set ceiling the spend is measured against, when any.
+    let budgetUSD: Double?
     let resetsAt: Date?
 
     var id: String { "\(label)-\(resetsAt?.timeIntervalSince1970 ?? -1)" }
@@ -30,6 +32,7 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.label = label
         self.percentUsed = Usage.clampPercent(percentUsed)
         self.spendUSD = nil
+        self.budgetUSD = nil
         self.resetsAt = resetsAt
     }
 
@@ -37,6 +40,24 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.label = label
         self.percentUsed = nil
         self.spendUSD = max(0, spendUSD)
+        self.budgetUSD = nil
+        self.resetsAt = resetsAt
+    }
+
+    /// Spend measured against a user-set budget: carries dollars AND a derived
+    /// percent, so the ring gets bands and the popover can say "$34.20 of $50".
+    /// A budget that is zero, negative, or non-finite is treated as unset.
+    init(label: String, spendUSD: Double, budgetUSD: Double?, resetsAt: Date?) {
+        self.label = label
+        let spend = max(0, spendUSD)
+        self.spendUSD = spend
+        if let budget = budgetUSD, budget > 0, budget.isFinite {
+            self.budgetUSD = budget
+            self.percentUsed = Usage.clampPercent(spend / budget * 100)
+        } else {
+            self.budgetUSD = nil
+            self.percentUsed = nil
+        }
         self.resetsAt = resetsAt
     }
 
@@ -124,6 +145,9 @@ protocol UsageProvider: Sendable {
     nonisolated var pollInterval: TimeInterval { get }
     /// Marks the provider as unverified/experimental in the UI.
     nonisolated var isExperimental: Bool { get }
+    /// Declared, optional refinements — rendered generically by the Settings
+    /// window. Defaults must always leave the provider fully functional.
+    nonisolated var settings: [ProviderSetting] { get }
 
     func detect() async -> ProviderPresence
     func snapshot() async -> ProviderState
@@ -136,10 +160,29 @@ protocol UsageProvider: Sendable {
 extension UsageProvider {
     nonisolated var isExperimental: Bool { false }
     nonisolated var shortName: String { displayName }
+    nonisolated var settings: [ProviderSetting] { [] }
     func start(onExternalChange _: @escaping @Sendable () -> Void) async {}
 }
 
 // MARK: - Registry
+
+/// One declared provider setting. `key` is a SUFFIX — the app composes the
+/// full UserDefaults key as "provider.<providerID>.<key>" (distinct from the
+/// legacy "provider.enabled.<id>" keys, which are not migrated).
+struct ProviderSetting: Sendable, Identifiable, Equatable {
+    let key: String
+    let title: String
+    let help: String?
+    let kind: Kind
+
+    var id: String { key }
+
+    enum Kind: Sendable, Equatable {
+        case money(defaultValue: Double?)
+        case toggle(defaultValue: Bool)
+        case choice(options: [String], defaultValue: String)
+    }
+}
 
 enum ProviderRegistry {
     /// Add your provider here.

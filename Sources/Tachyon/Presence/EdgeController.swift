@@ -11,6 +11,15 @@ import SwiftUI
 final class EdgeController {
     /// The app layer supplies the context menu (same one as the status item).
     var onPillRightClick: ((NSEvent, NSView) -> Void)?
+    /// Fired when the pill's gear affordance is clicked.
+    var onSettingsRequested: (() -> Void)?
+
+    private var gearVisible = false {
+        didSet {
+            guard gearVisible != oldValue else { return }
+            hostView.rootView = PillView(slots: visibleSlots, gearVisible: gearVisible)
+        }
+    }
 
     enum PresenceState {
         case docked
@@ -110,7 +119,7 @@ final class EdgeController {
     /// every snapshot.
     func rebuild() {
         let slots = visibleSlots
-        hostView.rootView = PillView(slots: slots)
+        hostView.rootView = PillView(slots: slots, gearVisible: gearVisible)
         shim.update(slots: slots)
 
         guard !slots.isEmpty, let screen = currentScreen else {
@@ -364,6 +373,7 @@ final class EdgeController {
     }
 
     private func pillPointer(inside: Bool) {
+        gearVisible = inside
         pointerInPill = inside
         if inside {
             collapseWorkItem?.cancel()
@@ -464,6 +474,11 @@ final class EdgeController {
     }
 
     private func pillClicked(at point: NSPoint) {
+        // The gear lives in the pill's bottom padding/taper band.
+        if point.y > PillMetrics.gearZoneTop(moduleCount: moduleCount) {
+            onSettingsRequested?()
+            return
+        }
         guard let index = PillMetrics.moduleIndex(atY: point.y, count: moduleCount),
               let slot = visibleSlots[safe: index] else { return }
 

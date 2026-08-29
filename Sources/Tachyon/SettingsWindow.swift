@@ -1,0 +1,254 @@
+import AppKit
+import SwiftUI
+import ServiceManagement
+
+/// The Settings window: General + one pane per detected provider. Every pane
+/// doubles as a diagnostic view (presence, last poll, plan) and carries the
+/// provider's Enabled toggle plus its declared settings, rendered generically.
+@MainActor
+enum SettingsWindow {
+    private static var window: NSWindow?
+
+    static func show(model: UsageModel) {
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let hosting = NSHostingController(rootView: SettingsRoot(model: model))
+        let panel = NSWindow(contentViewController: hosting)
+        panel.styleMask = [.titled, .closable]
+        panel.title = "Tachyon Settings"
+        panel.isReleasedWhenClosed = false
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.center()
+        window = panel
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+// MARK: - Root: sidebar + pane
+
+private struct SettingsRoot: View {
+    let model: UsageModel
+    @State private var selection: String = "general"
+
+    /// Detected = anything installed, signed in or not — the pane is the
+    /// diagnostic surface, so signed-out providers belong here too.
+    private var visibleSlots: [ProviderSlot] {
+        model.slots.filter { $0.presence != .notInstalled }
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                SidebarRow(title: "General", glyph: nil, selected: selection == "general")
+                    .onTapGesture { selection = "general" }
+                Divider().padding(.vertical, 6)
+                ForEach(visibleSlots) { slot in
+                    SidebarRow(title: slot.shortName, glyph: slot.glyph, selected: selection == slot.id)
+                        .onTapGesture { selection = slot.id }
+                }
+                Spacer()
+            }
+            .padding(10)
+            .frame(width: 168)
+            .background(.quaternary.opacity(0.3))
+
+            Divider()
+
+            Group {
+                if selection == "general" {
+                    GeneralPane()
+                } else if let slot = model.slot(id: selection) {
+                    ProviderPane(model: model, slot: slot)
+                } else {
+                    GeneralPane()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(22)
+        }
+        .frame(width: 560, height: 360)
+    }
+}
+
+private struct SidebarRow: View {
+    let title: String
+    let glyph: ProviderGlyph?
+    let selected: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let glyph {
+                GlyphView(glyph: glyph, size: 14, color: .primary)
+            } else {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 12))
+                    .frame(width: 14)
+            }
+            Text(title).font(.system(size: 13))
+            Spacer()
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(selected ? Color.accentColor.opacity(0.18) : .clear)
+        )
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - General
+
+private struct GeneralPane: View {
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("General").font(.system(size: 16, weight: .semibold))
+
+            Toggle("Launch at Login", isOn: $launchAtLogin)
+                .onChange(of: launchAtLogin) { _, wanted in
+                    do {
+                        if wanted { try SMAppService.mainApp.register() }
+                        else { try SMAppService.mainApp.unregister() }
+                    } catch {
+                        launchAtLogin = SMAppService.mainApp.status == .enabled
+                    }
+                }
+                .disabled(Bundle.main.bundlePath.hasSuffix(".app") == false)
+
+            if SMAppService.mainApp.status == .requiresApproval {
+                Text("Waiting for approval in System Settings → Login Items.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+
+            Text("Display and quick provider toggles live in the menu-bar dropdown.")
+                .font(.system(size: 11)).foregroundStyle(.tertiary)
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Provider pane
+
+private struct ProviderPane: View {
+    let model: UsageModel
+    let slot: ProviderSlot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                GlyphView(glyph: slot.glyph, size: 22, color: .primary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(slot.shortName).font(.system(size: 16, weight: .semibold))
+                    Text(statusLine).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { slot.enabled },
+                    set: { model.setEnabled($0, for: slot.id) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
+
+            if !slot.providerSettings.isEmpty {
+                Divider()
+                ForEach(slot.providerSettings) { setting in
+                    SettingField(setting: setting, providerID: slot.id) {
+                        model.refresh(id: slot.id)
+                    }
+                }
+            }
+            Spacer()
+        }
+    }
+
+    private var statusLine: String {
+        switch slot.presence {
+        case .notInstalled: return "Not installed"
+        case .notSignedIn(let guidance): return guidance
+        case .ready:
+            var parts: [String] = []
+            if let polled = slot.lastPolled {
+                parts.append("polled \(ResetFormat.relative(polled))")
+            }
+            if let detail = slot.snapshot?.detail { parts.append(detail) }
+            return parts.isEmpty ? "Ready" : parts.joined(separator: " · ")
+        }
+    }
+}
+
+// MARK: - Generic setting renderers
+
+private struct SettingField: View {
+    let setting: ProviderSetting
+    let providerID: String
+    let onChange: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            switch setting.kind {
+            case .money(let defaultValue):
+                MoneyField(setting: setting, providerID: providerID,
+                           defaultValue: defaultValue, onChange: onChange)
+            case .toggle(let defaultValue):
+                Toggle(setting.title, isOn: Binding(
+                    get: { Settings.defaults.object(forKey: "provider.\(providerID).\(setting.key)") as? Bool ?? defaultValue },
+                    set: { Settings.defaults.set($0, forKey: "provider.\(providerID).\(setting.key)"); onChange() }
+                ))
+            case .choice(let options, let defaultValue):
+                Picker(setting.title, selection: Binding(
+                    get: { Settings.defaults.string(forKey: "provider.\(providerID).\(setting.key)") ?? defaultValue },
+                    set: { Settings.defaults.set($0, forKey: "provider.\(providerID).\(setting.key)"); onChange() }
+                )) {
+                    ForEach(options, id: \.self) { Text($0) }
+                }
+            }
+            if let help = setting.help {
+                Text(help).font(.system(size: 10.5)).foregroundStyle(.tertiary)
+            }
+        }
+    }
+}
+
+private struct MoneyField: View {
+    let setting: ProviderSetting
+    let providerID: String
+    let defaultValue: Double?
+    let onChange: () -> Void
+
+    @State private var text: String = ""
+
+    var body: some View {
+        HStack {
+            Text(setting.title).font(.system(size: 13))
+            Spacer()
+            TextField("none", text: $text)
+                .frame(width: 90)
+                .multilineTextAlignment(.trailing)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(commit)
+        }
+        .onAppear {
+            let stored = Settings.moneySetting(setting.key, provider: providerID) ?? defaultValue
+            text = stored.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "$\(Int($0))" : String(format: "$%.2f", $0) } ?? ""
+        }
+    }
+
+    /// Empty or junk clears the setting (removes the key — never writes 0).
+    private func commit() {
+        let cleaned = text.replacingOccurrences(of: "$", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        let value = Double(cleaned)
+        Settings.setMoneySetting(value, suffix: setting.key, provider: providerID)
+        let stored = Settings.moneySetting(setting.key, provider: providerID)
+        text = stored.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "$\(Int($0))" : String(format: "$%.2f", $0) } ?? ""
+        onChange()
+    }
+}

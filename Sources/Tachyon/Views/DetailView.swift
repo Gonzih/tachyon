@@ -114,9 +114,19 @@ private struct WindowRow: View {
     let window: UsageWindow
 
     private var caption: String {
+        if let spend = window.spendUSD, let budget = window.budgetUSD {
+            return "\(Self.money(spend)) of \(Self.money(budget))"
+        }
         if let percent = window.percentUsed { return "\(Int(percent.rounded()))% Used" }
         if let spend = window.spendUSD { return "\(UsageWindow.formatSpend(spend)) spent" }
         return ""
+    }
+
+    /// "$34.20", "$50" — cents when fractional, clean integers otherwise.
+    private static func money(_ usd: Double) -> String {
+        usd.truncatingRemainder(dividingBy: 1) == 0
+            ? "$\(Int(usd))"
+            : String(format: "$%.2f", usd)
     }
     @Environment(\.colorScheme) private var colorScheme
     private var theme: Theme { Theme(colorScheme) }

@@ -12,6 +12,14 @@ actor OmpProvider: UsageProvider {
     nonisolated let glyph = ProviderGlyph.omp
     /// Local database read — cheap, but nothing moves fast.
     nonisolated let pollInterval: TimeInterval = 120
+    nonisolated let settings: [ProviderSetting] = [
+        ProviderSetting(
+            key: "budget.monthly",
+            title: "Monthly budget",
+            help: "Colors the ring against a spend ceiling. Leave empty for a plain dollar readout.",
+            kind: .money(defaultValue: nil)
+        ),
+    ]
 
     // MARK: - Paths
 
@@ -52,8 +60,14 @@ actor OmpProvider: UsageProvider {
         // and the pill behaves exactly like a bounded provider. Spend rows
         // ride along either way.
         let spendToday = UsageWindow(label: "Today", spendUSD: sums.today, resetsAt: nextMidnight)
-        let spendMonth = UsageWindow(label: "This month", spendUSD: sums.month, resetsAt: nextMonth)
+        // The budget attaches HERE, to this one window, at construction —
+        // never by matching labels downstream. Breakdown rows stay spend-only.
+        let budget = Settings.moneySetting("budget.monthly", provider: id)
+        let spendMonth = UsageWindow(
+            label: "This month", spendUSD: sums.month, budgetUSD: budget, resetsAt: nextMonth)
 
+        // Primary rule (spec §8.3): real bounded window → budgeted month →
+        // today's spend. Real limits beat synthetic ones.
         var windows: [UsageWindow] = []
         let primary: UsageWindow
         if let worst = limits.max(by: { ($0.percentUsed ?? 0) < ($1.percentUsed ?? 0) }) {
@@ -61,6 +75,9 @@ actor OmpProvider: UsageProvider {
             windows = limits
             windows.append(spendToday)
             windows.append(spendMonth)
+        } else if spendMonth.percentUsed != nil {
+            primary = spendMonth
+            windows = [spendMonth, spendToday]
         } else {
             primary = spendToday
             windows = [spendToday, spendMonth]

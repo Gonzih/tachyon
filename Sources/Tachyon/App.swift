@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let edge = EdgeController(model: model)
         self.edge = edge
 
+        edge.onSettingsRequested = { [weak self] in self?.showSettings() }
         edge.onPillRightClick = { [weak self] event, view in
             guard let self else { return }
             // Same menu as the status item — the status item can be swallowed
@@ -73,6 +74,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.menu = menu
         statusItem = item
         refreshStatusIcon()
+        installMainMenu()
+    }
+
+    /// An accessory app has no visible menu bar of its own, but key
+    /// equivalents (⌘, ⌘W ⌘Q) only route through NSApp.mainMenu — install a
+    /// minimal invisible one.
+    private func installMainMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
+        appMenu.addItem(NSMenuItem(title: "Quit Tachyon", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let fileItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        fileItem.submenu = fileMenu
+        main.addItem(fileItem)
+        NSApp.mainMenu = main
     }
 
     /// The gauge fills with the summary usage across enabled providers.
@@ -184,6 +208,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
+        let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
+
         let refresh = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
@@ -225,10 +253,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func menuTitle(for slot: ProviderSlot) -> String {
         var title = slot.shortName
         if slot.isExperimental { title += " (experimental)" }
-        if let spend = slot.ringSpend {
-            title += " — \(UsageWindow.formatSpend(spend))"
-        } else if let percent = slot.ringPercent {
+        if let percent = slot.ringPercent {
             title += " — \(Int(percent.rounded()))%"
+            if slot.state.isStale { title += " (stale)" }
+        } else if let spend = slot.ringSpend {
+            title += " — \(UsageWindow.formatSpend(spend))"
             if slot.state.isStale { title += " (stale)" }
         } else if let guidance = slot.state.authGuidance {
             title += " — \(guidance)"
@@ -370,6 +399,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             center.add(UNNotificationRequest(
                 identifier: UUID().uuidString, content: content, trigger: nil))
         }
+    }
+
+    @objc func showSettings() {
+        SettingsWindow.show(model: model)
     }
 
     @objc private func showAbout() {

@@ -45,6 +45,12 @@ enum PillMetrics {
     /// Maps a y in panel coordinates (top-left origin) to the module under it.
     /// The gap between modules is split between its neighbours so there is no
     /// dead band where a hover does nothing.
+    /// Y (top-origin, panel coords) above which clicks hit the gear — the
+    /// bottom padding + taper band under the last module.
+    static func gearZoneTop(moduleCount count: Int) -> CGFloat {
+        panelHeight(moduleCount: count) - cornerRadius - verticalPadding
+    }
+
     static func moduleIndex(atY y: CGFloat, count: Int) -> Int? {
         guard count > 0 else { return nil }
         for index in 0..<count {
@@ -145,6 +151,8 @@ struct RingModule: View {
         return UsageColor.band(percent, theme: theme)
     }
 
+    /// Percent wins when both exist (a budgeted spend window) — same
+    /// precedence as every other surface.
     private var labelText: String {
         if let percent { return "\(Int(percent.rounded()))%" }
         if let spend = slot.ringSpend { return UsageWindow.formatSpend(spend) }
@@ -203,6 +211,7 @@ struct RingModule: View {
 /// The pill's whole content: silhouette plus one ring per visible provider.
 struct PillView: View {
     let slots: [ProviderSlot]
+    var gearVisible: Bool = false
     @Environment(\.colorScheme) private var colorScheme
     private var theme: Theme { Theme(colorScheme) }
 
@@ -220,6 +229,16 @@ struct PillView: View {
             }
             // Taper margin first, then the body's own padding.
             .padding(.top, PillMetrics.cornerRadius + PillMetrics.verticalPadding)
+
+            // Settings gear: fades in with hover, lives in the bottom band.
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(theme.fg(0.55))
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, PillMetrics.cornerRadius + 2)
+                .opacity(gearVisible ? 1 : 0)
+                .animation(.easeOut(duration: 0.18), value: gearVisible)
+                .accessibilityLabel("Tachyon settings")
         }
         .frame(
             width: PillMetrics.width,
