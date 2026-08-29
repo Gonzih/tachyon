@@ -175,9 +175,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item)
         }
 
-        let hint = NSMenuItem(title: "Add your harness…", action: nil, keyEquivalent: "")
-        hint.isEnabled = false
-        hint.toolTip = "Providers ship as one file each — see CONTRIBUTING.md"
+        let hint = NSMenuItem(title: "Add Your Harness — Copy Agent Prompt", action: #selector(copyHarnessPrompt), keyEquivalent: "")
+        hint.target = self
+        hint.toolTip = "Copies a prompt to paste into your coding agent; it implements the provider itself"
         menu.addItem(hint)
 
         menu.addItem(.separator())
@@ -333,6 +333,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             alert.alertStyle = .warning
             alert.runModal()
         }
+    }
+
+    /// Same prompt as README/website: paste into a coding agent and the
+    /// provider adds itself.
+    @objc private func copyHarnessPrompt() {
+        let prompt = """
+        Add support for {YOUR HARNESS} to Tachyon, the macOS usage-rings app.
+
+        1. git clone https://github.com/Gonzih/tachyon and read CONTRIBUTING.md — it defines the UsageProvider protocol and the acceptance checklist.
+        2. Investigate how {YOUR HARNESS} stores credentials locally and where its usage/rate-limit data lives (endpoint, log files, or CLI output).
+        3. Implement Sources/Tachyon/Providers/{Name}Provider.swift on the pattern of GrokProvider.swift, add one line to ProviderRegistry, add a glyph.
+        4. Verify with `swift run Tachyon --smoke` — your provider must show real numbers, or degrade cleanly to "not signed in".
+        5. Open a PR titled "provider: {name}".
+        """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(prompt, forType: .string)
     }
 
     @objc private func showAbout() {
