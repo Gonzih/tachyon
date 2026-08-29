@@ -3,7 +3,8 @@
 > **If you are a coding agent:** this document is your task spec. Implement one
 > file conforming to `UsageProvider`, register it, add a glyph, prove it with
 > `swift run Tachyon --smoke`, open a PR titled `provider: <name>`. Everything
-> you need is below.
+> you need is below. **Never leak credentials** — no tokens, account ids, or
+> emails in code, fixtures, logs, or the PR; see prompts/add-harness.md.
 
 Adding a harness to Tachyon is **one file, one registry line, one glyph**. The
 app's whole flywheel is that this stays true, so the protocol is deliberately
