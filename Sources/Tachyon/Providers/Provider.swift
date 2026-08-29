@@ -106,8 +106,13 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
     }
 
     /// On pace to exhaust before the reset. Drives band escalation and the
-    /// pulse on ring and shim.
-    var isPaceHot: Bool { (projectedAtReset ?? 0) >= 100 }
+    /// pulse on ring, shim, and popover bars. An already-exhausted window is
+    /// NOT hot: the pulse means "act now or you'll run out" — at 100% there
+    /// is no decision left, only the wait for the reset.
+    var isPaceHot: Bool {
+        guard let percent = percentUsed, percent < 100 else { return false }
+        return (projectedAtReset ?? 0) >= 100
+    }
 
     /// What the color bands judge: the raw percent, lifted to the NEXT band's
     /// floor when the window is on pace to exhaust before it resets

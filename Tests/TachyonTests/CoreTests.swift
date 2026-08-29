@@ -104,6 +104,12 @@ final class CoreTests: XCTestCase {
             label: "Weekly", percentUsed: 30,
             resetsAt: Date().addingTimeInterval(302_400), windowSeconds: 604_800)
         XCTAssertEqual(underPace.bandPercent, 30)
+
+        // Exhausted is not hot: no decision left, nothing to pulse about.
+        let dead = UsageWindow(
+            label: "Weekly", percentUsed: 100,
+            resetsAt: Date().addingTimeInterval(302_400), windowSeconds: 604_800)
+        XCTAssertFalse(dead.isPaceHot)
     }
 
     func testPaceNeedsSignal() {

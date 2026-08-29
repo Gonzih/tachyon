@@ -231,7 +231,9 @@ If `elapsed_fraction ≥ 0.1` (earlier projections are wild) and
 `projected_at_reset ≥ 100` — the user runs out before the reset at the current
 burn rate — the color lifts to the next band's floor: green→yellow,
 yellow→orange, orange→red. One band, never more: pace is a warning, not a
-measurement.
+measurement. Pace-hot windows also *pulse* (ring, shim, popover bar) — but an
+already-exhausted window (100%) never does: the pulse means "act now or you'll
+run out", and at the wall there is no decision left, only the wait.
 
 Worked example: a weekly window (`window_duration = 604800`s) that resets in
 3.5 days → `elapsed_fraction = 0.5`. At 38% used, `projected = 76` → no
