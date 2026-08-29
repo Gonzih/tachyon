@@ -195,3 +195,67 @@ Pill is **vertically centered on the right screen edge**, three states:
 - M3: Codex dual-stream + Grok (experimental) + detection states.
 - M4: Presence model (overlap → shim → reveal) + popover + polish.
 - M5: Status item, launch-at-login, build.sh, README + CONTRIBUTING.md.
+
+## 8. Provider settings & budgets (v1.3)
+
+**Discipline: settings are optional refinements, never prerequisites.** Every
+setting has a working default; the app is fully functional with the Settings
+window never opened.
+
+### 8.1 Declarative contract
+
+`UsageProvider` gains one defaulted member — the one-file contributor contract
+is preserved (declare in the same file, no UI code):
+
+```swift
+nonisolated var settings: [ProviderSetting] { get }   // default []
+
+struct ProviderSetting: Sendable, Identifiable {
+    let key: String          // namespaced under "provider.<id>.<key>"
+    let title: String
+    let help: String?
+    let kind: Kind
+
+    enum Kind: Sendable {
+        case money(default: Double?)     // USD; nil = "not set"
+        case toggle(default: Bool)
+        case choice(options: [String], default: String)
+    }
+}
+```
+
+- Values persist in UserDefaults as `provider.<id>.<key>`.
+- Providers read values at snapshot time via `Usage.setting(_:for:)` helpers;
+  a settings change triggers an immediate re-poll of that provider.
+- App renders one generic form per provider — consistent look, zero provider
+  UI code.
+
+### 8.2 Settings window
+
+- Standard macOS settings-style window, opened from the status menu / pill
+  context menu ("Settings… ⌘,"). LSUIElement app: window activates app
+  temporarily.
+- Left sidebar: **General** (display picker, launch at login — migrated from
+  the menu; menu keeps quick toggles), then one row per *detected* provider
+  (glyph + short name, matching pill visual language).
+- Right pane: provider status header (presence, last poll, plan) + the
+  declared settings form. Settings-less providers show status only — the pane
+  doubles as a diagnostic view.
+
+### 8.3 Budget (first declared setting)
+
+- `OmpProvider` declares `budget.monthly` (`money`, default nil).
+- Unset → current behavior: spend label ("$4.20"), neutral ring.
+- Set → spend windows with a monthly period gain
+  `percent = spend / budget × 100` → standard color bands, shim color, the
+  whole bounded machinery. Popover caption: "$34.20 of $50".
+- Bounded windows from `usage_history` still outrank budgeted spend for the
+  ring (real limits beat synthetic ones).
+- Future (not v1.3): auto-baseline (median of last full periods × 1.25) as
+  the computed default when unset; upstream key limits (OpenRouter) as tier 2.
+
+### 8.4 Out of scope v1.3
+
+Per-provider notification thresholds and poll overrides (they become declared
+settings later with zero protocol churn); auto-baseline; budget for
+non-spend providers.
