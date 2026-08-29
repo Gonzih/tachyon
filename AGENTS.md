@@ -32,7 +32,7 @@ merges them.
   static assets. Deploy: `cd docs && wrangler deploy`. Nothing else deploys
   the site. The demo is hand-built HTML/CSS/JS mirroring the app; keep it
   truthful to real behavior (colors, meters, no fabricated reset times).
-- `prompts/add-provider.md` — canonical add-your-harness prompt; README, the
+- `prompts/add-provider.md` — canonical add-your-provider prompt; README, the
   site chip, and the app menu embed copies. Change the canonical file first,
   mirror to all three.
 - `assets/` — icon (`scripts/icon-gen.swift` regenerates it), demo gif,
@@ -63,7 +63,7 @@ The brew-installed copy lives at `/Applications/Tachyon.app`; the dev copy at
 (hover/Settings description), `settings: [ProviderSetting]` (money/toggle/
 choice/secret — secrets go in the app's Keychain, never UserDefaults),
 `watchPaths` + `fileChanged(path)` (app-owned FSEvents, enabled-gated),
-`isExperimental`, `pollInterval`. Meters: percent, spend, spend-vs-budget.
+`isExperimental`, `pollInterval`. Meters: percent, spend, spend-vs-budget, count. Grouping via `category` (subscription / openHarness / infrastructure).
 Honesty rules: `resetsAt` only for provider-reported resets; never fabricate.
 
 ## Release process
