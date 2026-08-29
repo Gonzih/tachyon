@@ -231,6 +231,9 @@ private struct SettingField: View {
 
     @ViewBuilder private var control: some View {
         switch setting.kind {
+        case .secret(let placeholder):
+            SecretField(setting: setting, providerID: providerID,
+                        placeholder: placeholder, onChange: onChange)
         case .money(let defaultValue):
             MoneyField(setting: setting, providerID: providerID,
                        defaultValue: defaultValue, onChange: onChange)
@@ -283,6 +286,34 @@ private struct MoneyField: View {
         Settings.setMoneySetting(value, suffix: setting.key, provider: providerID)
         let stored = Settings.moneySetting(setting.key, provider: providerID)
         text = stored.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? "$\(Int($0))" : String(format: "$%.2f", $0) } ?? ""
+        onChange()
+    }
+}
+
+private struct SecretField: View {
+    let setting: ProviderSetting
+    let providerID: String
+    let placeholder: String
+    let onChange: () -> Void
+
+    @State private var text: String = ""
+
+    var body: some View {
+        SecureField(placeholder, text: $text)
+            .frame(width: 170)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit(commit)
+            .onAppear {
+                // Show a mask when a secret exists — never the secret itself.
+                text = Settings.secretSetting(setting.key, provider: providerID) == nil ? "" : "••••••••"
+            }
+    }
+
+    private func commit() {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard trimmed != "••••••••" else { return }   // untouched mask
+        Settings.setSecretSetting(trimmed.isEmpty ? nil : trimmed, suffix: setting.key, provider: providerID)
+        text = trimmed.isEmpty ? "" : "••••••••"
         onChange()
     }
 }

@@ -14,6 +14,33 @@ handled for you.
 `Sources/Tachyon/Providers/GrokProvider.swift` is the worked example referenced
 throughout. Read it alongside this document.
 
+## What a provider can be
+
+A provider is anything that can produce a `UsageSnapshot`. The built-ins cover
+the whole palette — copy whichever pattern fits:
+
+| Pattern | Data source | Example |
+|---|---|---|
+| Local harness, endpoint poll | harness's stored OAuth + its usage API | `ClaudeProvider`, `CodexProvider`, `GrokProvider` |
+| Local harness, file read | logs / SQLite the harness already writes | `OmpProvider` (quota + cost), `CursorProvider` (creds via SQLite) |
+| Pure config, external API | user-entered key via a `.secret` setting | `OpenRouterProvider` |
+
+And a window can meter anything:
+
+- **Bounded percent** — `UsageWindow(label:percentUsed:resetsAt:)` → colored ring
+- **Raw spend** — `UsageWindow(label:spendUSD:resetsAt:)` → "$4.20" readout
+- **Spend vs budget** — `UsageWindow(label:spendUSD:budgetUSD:resetsAt:)` →
+  percent ring + "$34.20 of $50" caption; wire the budget from a declared
+  `.money` setting
+
+Declared settings (`nonisolated let settings: [ProviderSetting]`) render
+automatically in the Settings window: `.money` (budgets), `.toggle`,
+`.choice`, and `.secret` — the only correct way to take an API key from the
+user. Secrets are stored in Tachyon's own Keychain item; **never** put a
+credential in UserDefaults, and never print one anywhere (see the hard rule at
+the top). Tokens, limits, cost, cost ceilings, external APIs — any combination
+works.
+
 ## The contract
 
 ```swift

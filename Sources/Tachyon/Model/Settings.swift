@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Security
 
 /// Thin, typed façade over `UserDefaults`. All persistence lives here.
 enum Settings {
@@ -17,6 +18,37 @@ enum Settings {
         // Default on: zero-config means new providers light up without a visit to the menu.
         guard defaults.object(forKey: key) != nil else { return true }
         return defaults.bool(forKey: key)
+    }
+
+    // MARK: Secrets (app-owned Keychain item, service "dev.gonzih.tachyon")
+
+    static func secretSetting(_ suffix: String, provider id: String) -> String? {
+        let account = settingKey(suffix, provider: id)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "dev.gonzih.tachyon",
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+        ]
+        var out: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
+              let data = out as? Data,
+              let value = String(data: data, encoding: .utf8), !value.isEmpty else { return nil }
+        return value
+    }
+
+    static func setSecretSetting(_ value: String?, suffix: String, provider id: String) {
+        let account = settingKey(suffix, provider: id)
+        let base: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "dev.gonzih.tachyon",
+            kSecAttrAccount as String: account,
+        ]
+        SecItemDelete(base as CFDictionary)
+        guard let value, !value.isEmpty else { return }
+        var add = base
+        add[kSecValueData as String] = Data(value.utf8)
+        SecItemAdd(add as CFDictionary, nil)
     }
 
     /// Full key for a declared provider setting: "provider.<id>.<suffix>".

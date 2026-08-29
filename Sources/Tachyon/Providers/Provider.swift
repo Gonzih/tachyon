@@ -178,6 +178,9 @@ struct ProviderSetting: Sendable, Identifiable, Equatable {
     var id: String { key }
 
     enum Kind: Sendable, Equatable {
+        /// Stored in Tachyon's own Keychain item — never UserDefaults, never
+        /// logs, never smoke output.
+        case secret(placeholder: String)
         case money(defaultValue: Double?)
         case toggle(defaultValue: Bool)
         case choice(options: [String], defaultValue: String)
@@ -192,6 +195,7 @@ enum ProviderRegistry {
         GrokProvider(),
         CursorProvider(),
         OmpProvider(),
+        OpenRouterProvider(),
     ]
 }
 

@@ -11,11 +11,12 @@ enum ProviderGlyph: String, Sendable, CaseIterable {
     case grok
     case cursor
     case omp
+    case openrouter
 
     /// Native coordinate space of `pathData`.
     var viewBox: CGRect {
         switch self {
-        case .claude, .cursor, .grok, .omp: return CGRect(x: 0, y: 0, width: 24, height: 24)
+        case .claude, .cursor, .grok, .omp, .openrouter: return CGRect(x: 0, y: 0, width: 24, height: 24)
         case .codex: return CGRect(x: 0, y: 0, width: 320, height: 320)
         }
     }
@@ -33,6 +34,9 @@ enum ProviderGlyph: String, Sendable, CaseIterable {
             // Oh My Pi's geometric pi: full-width bar, short left leg,
             // long right stem. Traced from the official mark.
             return "M5.2 5.8L18.6 5.8L18.6 9.1L15.2 9.1L15.2 21.2L11.9 21.2L11.9 9.1L9.3 9.1L9.3 17.3L6.7 17.3L6.7 9.1L5.2 9.1Z"
+        case .openrouter:
+            // OpenRouter mark (lobehub icons, MIT).
+            return "M18.654 3.87a5.087 5.087 0 110 10.174L23.7 19.09c.64.641.187 1.737-.72 1.737H8.48a8.479 8.479 0 010-16.958h10.175zM8.479 7.26a5.087 5.087 0 100 10.176 5.087 5.087 0 000-10.175z"
         case .cursor:
             return "M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"
         }
