@@ -340,7 +340,7 @@
   <div class="wrap">
     <p class="providers">Works with <b>Claude Code</b> · <b>Codex</b> · <b>Grok</b> · <b>Cursor</b> · <b>Oh My Pi</b> · <b>OpenRouter</b> · <b>Ollama</b></p>
     <br>
-    <p class="providers"><button class="harness-chip" id="addyours"><span class="chip-idle">+ add your harness</span><span class="chip-done">✓ prompt copied — paste it into your agent</span></button></p>
+    <p class="providers"><button class="harness-chip" id="addyours"><span class="chip-idle">+ add your provider</span><span class="chip-done">✓ prompt copied — paste it into your agent</span></button></p>
     <br>
   </div>
 </section>
@@ -376,10 +376,10 @@
   document.getElementById('addyours').addEventListener('click', (e) => {
     e.preventDefault();
     const chip = e.currentTarget;
-    navigator.clipboard.writeText(`Add support for {YOUR HARNESS} to Tachyon, the macOS usage-rings app.
+    navigator.clipboard.writeText(`Add support for {YOUR PROVIDER} to Tachyon, the macOS usage-rings app.
 
 1. git clone https://github.com/Gonzih/tachyon and read CONTRIBUTING.md — it defines the UsageProvider protocol and the acceptance checklist.
-2. Investigate how {YOUR HARNESS} stores credentials locally and where its usage/rate-limit data lives (endpoint, log files, or CLI output).
+2. Investigate how {YOUR PROVIDER} stores credentials locally and where its usage/rate-limit data lives (endpoint, log files, or CLI output).
 3. Implement Sources/Tachyon/Providers/{Name}Provider.swift on the pattern of GrokProvider.swift, add one line to ProviderRegistry, add a glyph.
 4. Verify with \`swift run Tachyon --smoke\` — your provider must show real numbers, or degrade cleanly to "not signed in".
 5. Open a PR titled "provider: {name}".

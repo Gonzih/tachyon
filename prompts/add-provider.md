@@ -1,14 +1,14 @@
-# Add-your-harness prompt
+# Add-your-provider prompt
 
 Canonical source for the prompt shown in the README, on tachyon.maksim.sh, and
-in the app's menu ("Add Your Harness — Copy Agent Prompt"). Change it here
+in the app's menu ("Add Your Provider…"). Change it here
 first; the three embeddings mirror this text.
 
 ```text
-Add support for {YOUR HARNESS} to Tachyon, the macOS usage-rings app.
+Add support for {YOUR PROVIDER} to Tachyon, the macOS usage-rings app.
 
 1. git clone https://github.com/Gonzih/tachyon and read CONTRIBUTING.md — it defines the UsageProvider protocol and the acceptance checklist.
-2. Investigate how {YOUR HARNESS} stores credentials locally and where its usage/rate-limit data lives (endpoint, log files, or CLI output).
+2. Investigate how {YOUR PROVIDER} stores credentials locally and where its usage/rate-limit data lives (endpoint, log files, or CLI output).
 3. Implement Sources/Tachyon/Providers/{Name}Provider.swift on the pattern of GrokProvider.swift, add one line to ProviderRegistry, add a glyph.
 4. Verify with `swift run Tachyon --smoke` — your provider must show real numbers, or degrade cleanly to "not signed in".
 5. Open a PR titled "provider: {name}".

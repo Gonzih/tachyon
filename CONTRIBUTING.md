@@ -8,9 +8,9 @@
 > file conforming to `UsageProvider`, register it, add a glyph, prove it with
 > `swift run Tachyon --smoke`, open a PR titled `provider: <name>`. Everything
 > you need is below. **Never leak credentials** — no tokens, account ids, or
-> emails in code, fixtures, logs, or the PR; see prompts/add-harness.md.
+> emails in code, fixtures, logs, or the PR; see prompts/add-provider.md.
 
-Adding a harness to Tachyon is **one file, one registry line, one glyph**. The
+Adding a provider to Tachyon is **one file, one registry line, one glyph**. The
 app's whole flywheel is that this stays true, so the protocol is deliberately
 small and everything hard — polling, backoff, layout, presence, the popover — is
 handled for you.

@@ -9,7 +9,7 @@ covers *what to build* (providers); this file covers *how to operate here*.
 project.** Agents act on his direct instruction, in his session, on his
 machine, with his credentials. Do not push, tag, release, deploy the site, or
 touch the homebrew tap unless he asked for it in this session. External
-contributions arrive as PRs (see `prompts/add-harness.md`) and only Gonzih
+contributions arrive as PRs (see `prompts/add-provider.md`) and only Gonzih
 merges them.
 
 ## Layout
@@ -32,7 +32,7 @@ merges them.
   static assets. Deploy: `cd docs && wrangler deploy`. Nothing else deploys
   the site. The demo is hand-built HTML/CSS/JS mirroring the app; keep it
   truthful to real behavior (colors, meters, no fabricated reset times).
-- `prompts/add-harness.md` — canonical add-your-harness prompt; README, the
+- `prompts/add-provider.md` — canonical add-your-harness prompt; README, the
   site chip, and the app menu embed copies. Change the canonical file first,
   mirror to all three.
 - `assets/` — icon (`scripts/icon-gen.swift` regenerates it), demo gif,
