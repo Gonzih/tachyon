@@ -68,10 +68,25 @@ first thing to run if a ring is blank.
 Talks to the four endpoints above and nowhere else. No telemetry. Overlap
 detection reads window geometry only — no Screen Recording permission.
 
-## Contributing
+## Add your harness
 
-A harness is one file, one registry line, one glyph.
-[CONTRIBUTING.md](CONTRIBUTING.md) — `GrokProvider.swift` is the worked example.
+Paste this into your coding agent — it adds itself:
+
+```text
+Add support for {YOUR HARNESS} to Tachyon, the macOS usage-rings app.
+
+1. git clone https://github.com/Gonzih/tachyon and read CONTRIBUTING.md — it
+   defines the UsageProvider protocol and the acceptance checklist.
+2. Investigate how {YOUR HARNESS} stores credentials locally and where its
+   usage/rate-limit data lives (endpoint, log files, or CLI output).
+3. Implement Sources/Tachyon/Providers/{Name}Provider.swift on the pattern of
+   GrokProvider.swift, add one line to ProviderRegistry, add a glyph.
+4. Verify with `swift run Tachyon --smoke` — your provider must show real
+   numbers, or degrade cleanly to "not signed in".
+5. Open a PR titled "provider: {name}".
+```
+
+Humans welcome too: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
