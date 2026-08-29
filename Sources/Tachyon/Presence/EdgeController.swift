@@ -27,8 +27,8 @@ final class EdgeController {
     private static let popoverExitGrace: TimeInterval = 0.2
     /// Width of the edge strip that arms the reveal.
     private static let hotZoneWidth: CGFloat = 12
-    private static let slideOutDuration: TimeInterval = 0.25
-    private static let slideInDuration: TimeInterval = 0.3
+    private static let slideOutDuration: TimeInterval = 0.18
+    private static let slideInDuration: TimeInterval = 0.22
 
     private(set) var state: PresenceState = .docked
 
@@ -218,13 +218,14 @@ final class EdgeController {
 
         switch next {
         case .shim:
-            // Slide out first, then swap in the shim so there is no visible gap.
+            // Slide fully out first; the color slivers appear only once the
+            // pill has left, so the hide reads as one clean motion.
             shim.position(on: screen, moduleCount: moduleCount)
-            shim.orderFrontRegardless()
             applyFrame(for: .shim, on: screen, animated: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.slideOutDuration) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.slideOutDuration + 0.03) { [weak self] in
                 guard let self, self.state == .shim else { return }
                 self.pill.orderOut(nil)
+                self.shim.orderFrontRegardless()
             }
             popover.dismiss()
             pointerInPopover = false

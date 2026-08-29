@@ -190,6 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 item.state = slot.enabled ? .on : .off
             }
             item.image = Self.menuGlyph(slot.glyph)
+            if let about = slot.about { item.toolTip = about }
             menu.addItem(item)
         }
 

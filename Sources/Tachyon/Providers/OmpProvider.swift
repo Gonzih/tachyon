@@ -12,6 +12,8 @@ actor OmpProvider: UsageProvider {
     nonisolated let glyph = ProviderGlyph.omp
     /// Local database read — cheap, but nothing moves fast.
     nonisolated let pollInterval: TimeInterval = 120
+    nonisolated let about: String? =
+        "Quota windows and per-turn cost from Oh My Pi\u{2019}s own database — covers every account it routes."
     nonisolated let settings: [ProviderSetting] = [
         ProviderSetting(
             key: "budget.monthly",

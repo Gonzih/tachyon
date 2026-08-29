@@ -13,11 +13,11 @@ import Foundation
 final class FSEventsWatcher: @unchecked Sendable {
     private let path: String
     private let latency: CFTimeInterval
-    private let onChange: @Sendable () -> Void
+    private let onChange: @Sendable ([String]) -> Void
     private let queue: DispatchQueue
     private var streamRef: FSEventStreamRef?
 
-    init(path: String, latency: CFTimeInterval = 2.0, onChange: @escaping @Sendable () -> Void) {
+    init(path: String, latency: CFTimeInterval = 2.0, onChange: @escaping @Sendable ([String]) -> Void) {
         self.path = path
         self.latency = latency
         self.onChange = onChange
@@ -42,10 +42,11 @@ final class FSEventsWatcher: @unchecked Sendable {
 
             // C function pointer: cannot capture, so `self` is recovered from `info`.
             // Unretained is safe because `deinit` tears the stream down first.
-            let callback: FSEventStreamCallback = { _, info, _, _, _, _ in
+            let callback: FSEventStreamCallback = { _, info, count, eventPaths, _, _ in
                 guard let info else { return }
                 let watcher = Unmanaged<FSEventsWatcher>.fromOpaque(info).takeUnretainedValue()
-                watcher.onChange()
+                let paths = (Unmanaged<CFArray>.fromOpaque(eventPaths).takeUnretainedValue() as? [String]) ?? []
+                watcher.onChange(Array(paths.prefix(count)))
             }
 
             let flags = FSEventStreamCreateFlags(

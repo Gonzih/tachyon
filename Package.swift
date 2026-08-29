@@ -11,6 +11,14 @@ let package = Package(
             swiftSettings: [
                 .swiftLanguageMode(.v6)
             ]
+        ),
+        .testTarget(
+            name: "TachyonTests",
+            dependencies: ["Tachyon"],
+            path: "Tests/TachyonTests",
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ]
         )
     ]
 )

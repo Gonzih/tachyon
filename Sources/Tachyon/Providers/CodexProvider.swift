@@ -20,7 +20,6 @@ actor CodexProvider: UsageProvider {
     private static let maxDayDirectories = 5
     private static let tailBytes = 256 * 1024
 
-    private var watcher: FSEventsWatcher?
 
     private struct Auth: Sendable {
         let accessToken: String
@@ -42,14 +41,9 @@ actor CodexProvider: UsageProvider {
         URL(fileURLWithPath: home).appendingPathComponent("sessions").path
     }
 
-    // MARK: - Lifecycle
-
-    func start(onExternalChange: @escaping @Sendable () -> Void) async {
-        guard watcher == nil else { return }
-        let watcher = FSEventsWatcher(path: Self.sessionsPath, latency: 2.0, onChange: onExternalChange)
-        watcher.start()
-        self.watcher = watcher
-    }
+    /// A completed turn writes a token_count event — the app re-polls us
+    /// within seconds instead of waiting out the interval.
+    nonisolated var watchPaths: [String] { [Self.sessionsPath] }
 
     // MARK: - Presence
 

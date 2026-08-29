@@ -145,6 +145,14 @@ protocol UsageProvider: Sendable {
     nonisolated var pollInterval: TimeInterval { get }
     /// Marks the provider as unverified/experimental in the UI.
     nonisolated var isExperimental: Bool { get }
+    /// Optional one-line description — shown on hover in the menu and in the
+    /// provider's Settings pane. Useful when the name alone doesn't explain
+    /// what's being metered (corporate accounts, aggregators…).
+    nonisolated var about: String? { get }
+    /// Files/directories to watch while the provider is enabled. The app owns
+    /// the FSEvents machinery: on any change it calls `fileChanged(_:)` with
+    /// the triggering path, then re-polls the provider. Empty = no watching.
+    nonisolated var watchPaths: [String] { get }
     /// Declared, optional refinements — rendered generically by the Settings
     /// window. Defaults must always leave the provider fully functional.
     nonisolated var settings: [ProviderSetting] { get }
@@ -152,16 +160,18 @@ protocol UsageProvider: Sendable {
     func detect() async -> ProviderPresence
     func snapshot() async -> ProviderState
 
-    /// Called once by the model after registry init. Providers that need
-    /// file watchers start them here (never in `init`).
-    func start(onExternalChange: @escaping @Sendable () -> Void) async
+    /// Invoked with the path that triggered a watch event, before the re-poll.
+    /// Use it to invalidate caches; the fresh snapshot() follows automatically.
+    func fileChanged(_ path: String) async
 }
 
 extension UsageProvider {
     nonisolated var isExperimental: Bool { false }
     nonisolated var shortName: String { displayName }
     nonisolated var settings: [ProviderSetting] { [] }
-    func start(onExternalChange _: @escaping @Sendable () -> Void) async {}
+    nonisolated var about: String? { nil }
+    nonisolated var watchPaths: [String] { [] }
+    func fileChanged(_ path: String) async {}
 }
 
 // MARK: - Registry

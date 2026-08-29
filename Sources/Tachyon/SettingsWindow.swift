@@ -170,6 +170,13 @@ private struct ProviderPane: View {
                 .controlSize(.small)
             }
 
+            if let about = slot.about {
+                Text(about)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if !slot.providerSettings.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(Array(slot.providerSettings.enumerated()), id: \.element.id) { index, setting in

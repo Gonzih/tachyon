@@ -14,6 +14,8 @@ actor OpenRouterProvider: UsageProvider {
     nonisolated let shortName = "OpenRouter"
     nonisolated let glyph = ProviderGlyph.openrouter
     nonisolated let pollInterval: TimeInterval = 120
+    nonisolated let about: String? =
+        "Spend across every model routed through your OpenRouter key — pay-as-you-go or key-limited."
     nonisolated let settings: [ProviderSetting] = [
         ProviderSetting(
             key: "apiKey",
@@ -114,7 +116,7 @@ actor OpenRouterProvider: UsageProvider {
     /// auth/key reports lifetime spend; month spend = cumulative − the first
     /// reading seen this month. The baseline self-heals if usage ever reads
     /// lower than it (key rotated or credits refunded).
-    private static func monthSpend(cumulative: Double) -> Double {
+    static func monthSpend(cumulative: Double) -> Double {
         let monthKey = "provider.openrouter.baseline.month"
         let valueKey = "provider.openrouter.baseline.usage"
         let calendar = Calendar.current

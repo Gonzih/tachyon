@@ -38,8 +38,19 @@ automatically in the Settings window: `.money` (budgets), `.toggle`,
 `.choice`, and `.secret` — the only correct way to take an API key from the
 user. Secrets are stored in Tachyon's own Keychain item; **never** put a
 credential in UserDefaults, and never print one anywhere (see the hard rule at
-the top). Tokens, limits, cost, cost ceilings, external APIs — any combination
-works.
+the top). Two more blocks:
+
+- **`about`** — one line shown on hover in the menu and in the Settings pane.
+  Skip it when the name says everything (Claude, Codex); use it when it
+  doesn't (a corporate account, an aggregator, a proxy).
+- **`watchPaths` + `fileChanged(_:)`** — declare files/directories and the app
+  owns the FSEvents machinery: watching runs only while your provider is
+  enabled, `fileChanged` receives the triggering path (invalidate caches
+  there), and a fresh `snapshot()` follows automatically. See `CodexProvider`.
+
+Tokens, limits, cost, cost ceilings, external APIs — any combination
+works. We can't predict the future; these blocks are meant to be enough that
+you don't need us to.
 
 One honesty rule for windows: **`resetsAt` is for provider-reported resets
 only.** If your window is a measurement period you invented ("Today",
@@ -56,10 +67,13 @@ protocol UsageProvider: Sendable {
     nonisolated var glyph: ProviderGlyph { get }
     nonisolated var pollInterval: TimeInterval { get }
     nonisolated var isExperimental: Bool { get }   // defaulted to false
+    nonisolated var about: String? { get }         // defaulted to nil
+    nonisolated var settings: [ProviderSetting] { get }  // defaulted to []
+    nonisolated var watchPaths: [String] { get }   // defaulted to []
 
     func detect() async -> ProviderPresence
     func snapshot() async -> ProviderState
-    func start(onExternalChange: @escaping @Sendable () -> Void) async  // defaulted to a no-op
+    func fileChanged(_ path: String) async         // defaulted to a no-op
 }
 ```
 
@@ -234,7 +248,25 @@ attribution surfaces, matching the existing style:
 If the source is new (not simple-icons/Wikimedia/lobehub already listed), name
 it and its license explicitly in all three places.
 
-## Step 5 — the registry line
+## Step 5 — tests (required)
+
+Every provider PR must include unit tests, and `swift test` must pass — CI
+runs it on every PR. Put them in `Tests/TachyonTests/`, follow the existing
+files:
+
+- **Decode/parse coverage is the minimum**: your `decode`/parse function
+  against shape fixtures — the happy path, a partial payload, and garbage
+  (must return nil, never crash). Fixtures are *shapes with synthetic values*;
+  never commit real account data (see the hard rule at the top).
+- File-based providers: build a synthetic fixture (temp dir / SQLite) and
+  point your provider at it via its env override — `OmpProviderTests` is the
+  worked example.
+- Any state logic you add (baselines, budgets, freshness rules) gets its own
+  tests — `testOpenRouterMonthBaseline` is the pattern.
+
+If it isn't tested, it isn't merged.
+
+## Step 6 — the registry line
 
 ```swift
 enum ProviderRegistry {

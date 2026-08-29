@@ -36,6 +36,7 @@ struct ProviderSlot: Identifiable, Equatable {
     let glyph: ProviderGlyph
     let isExperimental: Bool
     let providerSettings: [ProviderSetting]
+    let about: String?
     var presence: ProviderPresence = .notInstalled
     var state: ProviderState = .unavailable
     var enabled: Bool = true
@@ -99,6 +100,7 @@ final class UsageModel {
                 glyph: provider.glyph,
                 isExperimental: provider.isExperimental,
                 providerSettings: provider.settings,
+                about: provider.about,
                 enabled: Settings.providerEnabled(provider.id)
             )
         }
@@ -111,19 +113,9 @@ final class UsageModel {
             let signal = RefreshSignal()
             refreshSignals[provider.id] = signal
             let id = provider.id
-            Task { [weak self] in
-                // Providers install file watchers here, never in `init`.
-                await provider.start(onExternalChange: { [weak self] in
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        Log.model.debug("External change for \(id, privacy: .public); polling now")
-                        self.resetBackoff(id)
-                        let signal = self.refreshSignals[id]
-                        Task { await signal?.fire() }
-                    }
-                })
-                self?.beginPolling(provider, signal: signal)
-            }
+            _ = id
+            beginPolling(provider, signal: signal)
+            syncWatcher(for: provider)
         }
         installSystemObservers()
     }
@@ -283,10 +275,43 @@ final class UsageModel {
         }
     }
 
+    // MARK: File watching (model-owned, declarative)
+
+    private var watchers: [String: [FSEventsWatcher]] = [:]
+
+    /// Watch a provider's declared paths iff it is enabled and declares any.
+    private func syncWatcher(for provider: any UsageProvider) {
+        let id = provider.id
+        let wantsWatch = provider.watchPaths.isEmpty == false
+            && (slots.first(where: { $0.id == id })?.enabled ?? false)
+
+        if !wantsWatch {
+            watchers[id]?.forEach { $0.stop() }
+            watchers[id] = nil
+            return
+        }
+        guard watchers[id] == nil else { return }
+        watchers[id] = provider.watchPaths.map { path in
+            let watcher = FSEventsWatcher(path: path, latency: 2.0, onChange: { [weak self] paths in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    Log.model.debug("Watched change for \(id, privacy: .public); polling now")
+                    await provider.fileChanged(paths.first ?? path)
+                    self.refresh(id: id)
+                }
+            })
+            watcher.start()
+            return watcher
+        }
+    }
+
     func setEnabled(_ enabled: Bool, for id: String) {
         guard let index = slots.firstIndex(where: { $0.id == id }) else { return }
         slots[index].enabled = enabled
         Settings.setProviderEnabled(enabled, for: id)
+        if let provider = providers.first(where: { $0.id == id }) {
+            syncWatcher(for: provider)
+        }
         onSlotsChanged?()
     }
 
