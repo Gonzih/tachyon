@@ -169,10 +169,37 @@ let percent = config["creditUsagePercent"].double ?? 0
 
 ## Step 4 — a glyph
 
-Add a case to `ProviderGlyph` and a `Shape` in `Glyphs.swift`. Glyphs are
-`Path`-drawn, not assets — the app ships with no resources at all. Draw inside a
-unit square; `GlyphView` handles scaling and color. Keep it legible at 16pt: a
-silhouette, not a logo.
+Glyphs are embedded SVG path data, not image assets — the app ships with zero
+resources. In `Glyphs.swift`:
+
+1. Add a case to `ProviderGlyph`.
+2. Add its `viewBox` (the coordinate space of your path data).
+3. Add its `pathData` — a single SVG `d` string. The built-in parser handles
+   M/L/H/V/C/S/Q/T/A/Z, absolute and relative, with implicit repeats. Multiple
+   subpaths fill even-odd (use that for knockouts).
+
+**Sourcing the mark, in order of preference:**
+
+1. [simple-icons](https://simpleicons.org) — CC0 path data, already 24×24.
+2. [lobehub icons](https://github.com/lobehub/lobe-icons) — MIT, covers most
+   AI products.
+3. Wikimedia Commons vector logos.
+4. Trace the official mark yourself (blocky geometric marks reduce to a short
+   hand-written path — see `.omp`).
+
+Rules: the *official* mark, rendered **grayscale only** — `GlyphView` tints it;
+never bake brand colors in. Keep it legible at 13–16pt (silhouette, not a
+wordmark). Verify by opening the menu and the Settings sidebar.
+
+**Attribution is mandatory.** Add the icon's source and license to all three
+attribution surfaces, matching the existing style:
+
+- `README.md` → Credits section ("Provider marks: …")
+- `Sources/Tachyon/AboutWindow.swift` → the small-print attribution `Text`
+- `docs/index.html` → footer attribution line
+
+If the source is new (not simple-icons/Wikimedia/lobehub already listed), name
+it and its license explicitly in all three places.
 
 ## Step 5 — the registry line
 
