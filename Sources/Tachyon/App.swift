@@ -1,5 +1,5 @@
 import AppKit
-import UserNotifications
+@preconcurrency import UserNotifications
 import ServiceManagement
 import SwiftUI
 
