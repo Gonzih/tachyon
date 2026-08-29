@@ -38,10 +38,20 @@ final class OmpProviderTests: XCTestCase {
             // A fresh bounded window (65%) and a stale one that must be ignored.
             "INSERT INTO usage_history VALUES (\(now - 300), 'anthropic', 'a', 'x', 'y', 'weekly', 'Weekly', 'Weekly', 0.65, 'ok', \(now + 86400));",
             "INSERT INTO usage_history VALUES (\(now - 10 * 86400), 'openai', 'b', 'x', 'y', 'w', 'Old', 'Old', 0.9, 'ok', \(now - 5 * 86400));",
+            """
+            CREATE TABLE model_usage (
+              model_key TEXT PRIMARY KEY, last_used_at INTEGER NOT NULL);
+            """,
+            // The newest row wins the footer, not insertion order.
+            "INSERT INTO model_usage VALUES ('ollama/qwen2.5-coder:32b', \(now - 3600));",
+            "INSERT INTO model_usage VALUES ('openrouter/poolside/laguna-s-2.1:free', \(now - 60));",
         ]
         for sql in statements {
             XCTAssertEqual(sqlite3_exec(db, sql, nil, nil, nil), SQLITE_OK, sql)
         }
+
+        try "setupVersion: 1\nmodelRoles: \n  default: opencode-zen/nemotron-3-ultra-free\n"
+            .write(to: home.appendingPathComponent("agent/config.yml"), atomically: true, encoding: .utf8)
     }
 
     override func tearDown() {
@@ -69,6 +79,25 @@ final class OmpProviderTests: XCTestCase {
 
         // The stale bounded window must not appear.
         XCTAssertFalse(snapshot.windows.contains { $0.label.contains("Old") })
+
+        // Footer: last-used model from model_usage, trimmed to its last path
+        // segment — the config default must NOT win while usage rows exist.
+        XCTAssertEqual(snapshot.detail, "laguna-s-2.1:free")
+    }
+
+    func testFooterFallsBackToConfigDefaultWithoutModelUsage() async {
+        let dbPath = home.appendingPathComponent("agent/agent.db").path
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(dbPath, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db, "DROP TABLE model_usage;", nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+
+        let provider = OmpProvider()
+        let state = await provider.snapshot()
+        guard case .ok(let snapshot) = state else {
+            return XCTFail("expected .ok, got \(state)")
+        }
+        XCTAssertEqual(snapshot.detail, "nemotron-3-ultra-free")
     }
 
     func testMissingDatabaseIsNotSignedIn() async {

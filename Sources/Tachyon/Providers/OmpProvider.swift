@@ -217,8 +217,34 @@ actor OmpProvider: UsageProvider {
         return Spend(today: today, month: month, monthByProvider: byProvider)
     }
 
-    /// Footer: the configured default model, from agent/config.yml.
+    /// Footer: the model actually last used (agent.db `model_usage`), falling
+    /// back to the configured default role — per-session model switches never
+    /// rewrite config.yml, so the config alone goes stale.
     private static func modelDetail() -> String? {
+        lastUsedModel() ?? configDefaultModel()
+    }
+
+    private static func lastUsedModel() -> String? {
+        var db: OpaquePointer?
+        let uri = "file:\(dbPath)?mode=ro"
+        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
+              let db else {
+            sqlite3_close(db)
+            return nil
+        }
+        defer { sqlite3_close(db) }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db,
+            "SELECT model_key FROM model_usage ORDER BY last_used_at DESC LIMIT 1",
+            -1, &statement, nil) == SQLITE_OK, let statement else { return nil }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let text = sqlite3_column_text(statement, 0) else { return nil }
+        return shortModelName(String(cString: text))
+    }
+
+    private static func configDefaultModel() -> String? {
         let configPath = URL(fileURLWithPath: home).appendingPathComponent("agent/config.yml").path
         guard let data = FileManager.default.contents(atPath: configPath),
               let text = String(data: data, encoding: .utf8) else { return nil }
@@ -226,10 +252,14 @@ actor OmpProvider: UsageProvider {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("default:") {
                 let model = trimmed.dropFirst("default:".count).trimmingCharacters(in: .whitespaces)
-                // "opencode-zen/nemotron-3-ultra-free" → "nemotron-3-ultra-free"
-                return model.split(separator: "/").last.map(String.init)
+                return shortModelName(model)
             }
         }
         return nil
+    }
+
+    /// "openrouter/poolside/laguna-s-2.1:free" → "laguna-s-2.1:free"
+    private static func shortModelName(_ key: String) -> String? {
+        key.split(separator: "/").last.map(String.init)
     }
 }

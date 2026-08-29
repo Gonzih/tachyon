@@ -64,6 +64,10 @@ npm `@oh-my-pi/pi-coding-agent` (bun runtime), config root `~/.omp`
 - `auth_credentials` — multi-account store; 73 provider registry incl.
   OpenRouter (validated via openrouter.ai/api/v1/auth/key), locals
   (ollama/lm-studio/llama.cpp/vllm).
+- `model_usage(model_key, last_used_at)` — one row per model ever run;
+  newest row = footer (the model actually in use). `config.yml`
+  `modelRoles.default` is only a fallback — per-session model switches
+  never rewrite it, so it goes stale.
 - No monetary budget setting exists in omp's settings schema.
 - Session JSONLs: `~/.omp/agent/sessions/<encoded-cwd>/<ts>_<uuid>.jsonl`,
   assistant messages carry `usage.cost.total`; `omp usage --json` and
