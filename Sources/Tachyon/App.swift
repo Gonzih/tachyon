@@ -175,7 +175,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item)
         }
 
-        let hint = NSMenuItem(title: "Add Your Harness — Copy Agent Prompt", action: #selector(copyHarnessPrompt), keyEquivalent: "")
+        let recentlyCopied = promptCopiedAt.map { Date().timeIntervalSince($0) < 60 } ?? false
+        let hint = NSMenuItem(
+            title: recentlyCopied ? "✓ Prompt Copied — Paste Into Your Agent" : "Add Your Harness — Copy Agent Prompt",
+            action: #selector(copyHarnessPrompt),
+            keyEquivalent: ""
+        )
         hint.target = self
         hint.toolTip = "Copies a prompt to paste into your coding agent; it implements the provider itself"
         menu.addItem(hint)
@@ -349,6 +354,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         """
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(prompt, forType: .string)
+        promptCopiedAt = Date()
+
+        // Visible confirmation even though the menu just closed: the status
+        // gauge flashes a green checkmark, then returns to the usage dial.
+        statusItem?.button?.image = Self.checkmarkImage()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
+            self?.refreshStatusIcon()
+        }
+    }
+
+    private var promptCopiedAt: Date? {
+        get { UserDefaults.standard.object(forKey: "harnessPromptCopiedAt") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "harnessPromptCopiedAt") }
+    }
+
+    private static func checkmarkImage() -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let ring = NSBezierPath(ovalIn: rect.insetBy(dx: 2.5, dy: 2.5))
+            ring.lineWidth = 1.5
+            NSColor.systemGreen.setStroke()
+            ring.stroke()
+            let check = NSBezierPath()
+            check.move(to: NSPoint(x: 5.5, y: 9))
+            check.line(to: NSPoint(x: 8, y: 6.5))
+            check.line(to: NSPoint(x: 12.5, y: 11.5))
+            check.lineWidth = 2
+            check.lineCapStyle = .round
+            check.lineJoinStyle = .round
+            NSColor.systemGreen.setStroke()
+            check.stroke()
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 
     @objc private func showAbout() {
