@@ -71,9 +71,8 @@ actor OpenRouterProvider: UsageProvider {
             let limit = data["limit"].double
             let isFree = data["is_free_tier"].bool ?? false
 
-            let calendar = Calendar.current
-            let monthStart = calendar.dateInterval(of: .month, for: Date())?.start
-            let nextMonth = monthStart.flatMap { calendar.date(byAdding: .month, value: 1, to: $0) }
+            // "This month" is Tachyon's measurement window, not an OpenRouter
+            // reset — credits are prepaid and never refresh. No reset time.
             let monthSpend = Self.monthSpend(cumulative: usage)
 
             var windows: [UsageWindow] = []
@@ -85,12 +84,12 @@ actor OpenRouterProvider: UsageProvider {
                 windows.append(UsageWindow(
                     label: "This month", spendUSD: monthSpend,
                     budgetUSD: Settings.moneySetting("budget.monthly", provider: id),
-                    resetsAt: nextMonth))
+                    resetsAt: nil))
             } else {
                 primary = UsageWindow(
                     label: "This month", spendUSD: monthSpend,
                     budgetUSD: Settings.moneySetting("budget.monthly", provider: id),
-                    resetsAt: nextMonth)
+                    resetsAt: nil)
                 windows.append(primary)
             }
             windows.append(UsageWindow(label: "All time", spendUSD: usage, resetsAt: nil))

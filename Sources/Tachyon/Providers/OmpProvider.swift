@@ -48,23 +48,19 @@ actor OmpProvider: UsageProvider {
         }
         let limits = Self.readLimits()
 
-        let calendar = Calendar.current
-        let now = Date()
-        let midnight = calendar.startOfDay(for: now)
-        let nextMidnight = calendar.date(byAdding: .day, value: 1, to: midnight)
-        let monthStart = calendar.dateInterval(of: .month, for: now)?.start
-        let nextMonth = monthStart.flatMap { calendar.date(byAdding: .month, value: 1, to: $0) }
-
         // omp records bounded quota windows for subscription accounts in
         // usage_history — when they exist, the worst active one is the ring
         // and the pill behaves exactly like a bounded provider. Spend rows
         // ride along either way.
-        let spendToday = UsageWindow(label: "Today", spendUSD: sums.today, resetsAt: nextMidnight)
+        // Synthetic measurement periods: the label carries the period; a
+        // "Resets…" line would imply a provider quota refresh that does not
+        // exist. Only omp-reported bounded windows get reset times.
+        let spendToday = UsageWindow(label: "Today", spendUSD: sums.today, resetsAt: nil)
         // The budget attaches HERE, to this one window, at construction —
         // never by matching labels downstream. Breakdown rows stay spend-only.
         let budget = Settings.moneySetting("budget.monthly", provider: id)
         let spendMonth = UsageWindow(
-            label: "This month", spendUSD: sums.month, budgetUSD: budget, resetsAt: nextMonth)
+            label: "This month", spendUSD: sums.month, budgetUSD: budget, resetsAt: nil)
 
         // Primary rule (spec §8.3): real bounded window → budgeted month →
         // today's spend. Real limits beat synthetic ones.
@@ -87,7 +83,7 @@ actor OmpProvider: UsageProvider {
             windows.append(UsageWindow(
                 label: provider.prefix(1).uppercased() + provider.dropFirst(),
                 spendUSD: amount,
-                resetsAt: nextMonth
+                resetsAt: nil
             ))
         }
 

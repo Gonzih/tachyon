@@ -45,8 +45,8 @@ enum SmokeTest {
                 print("  state: \(freshness), \(snapshot.windows.count) window(s)")
                 print("  ring: \(snapshot.primary.label) — \(meterText(snapshot.primary))")
                 for window in snapshot.windows {
-                    let reset = ResetFormat.resetText(window.resetsAt) ?? "no reset time"
-                    print("    · \(window.label): \(meterText(window))  (\(reset))")
+                    let reset = ResetFormat.resetText(window.resetsAt).map { "  (\($0))" } ?? ""
+                    print("    · \(window.label): \(meterText(window))\(reset)")
                 }
                 if let detail = snapshot.detail { print("  plan: \(detail)") }
             case .authError(let guidance):

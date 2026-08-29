@@ -41,6 +41,12 @@ credential in UserDefaults, and never print one anywhere (see the hard rule at
 the top). Tokens, limits, cost, cost ceilings, external APIs — any combination
 works.
 
+One honesty rule for windows: **`resetsAt` is for provider-reported resets
+only.** If your window is a measurement period you invented ("Today",
+"This month" over a spend series), pass `nil` — the label already carries the
+period, and a fabricated "Resets…" line tells the user a quota refresh exists
+when it doesn't.
+
 ## The contract
 
 ```swift
