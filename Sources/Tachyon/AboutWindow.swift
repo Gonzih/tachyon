@@ -56,15 +56,13 @@ private struct AboutView: View {
             Text("Made by Maksim Soltan")
                 .font(.system(size: 12, weight: .medium))
 
-            HStack(spacing: 6) {
+            VStack(spacing: 4) {
                 Link("code@maksim.sh", destination: URL(string: "mailto:code@maksim.sh")!)
-                dot
                 Link("maksim.sh", destination: URL(string: "https://maksim.sh")!)
-                dot
                 Link("tachyon.maksim.sh", destination: URL(string: "https://tachyon.maksim.sh")!)
             }
             .font(.system(size: 11))
-            .padding(.top, 5)
+            .padding(.top, 6)
 
             VStack(spacing: 3) {
                 Link("Wild Honey on the Porch, LLC", destination: URL(string: "https://studio.wildhoneyontheporch.com/")!)
@@ -84,10 +82,6 @@ private struct AboutView: View {
         .padding(.top, 20)
         .padding(.bottom, 22)
         .frame(width: 300)
-    }
-
-    private var dot: some View {
-        Text("·").font(.system(size: 11)).foregroundStyle(.tertiary)
     }
 
     /// The real app icon — same rounded-square gauge that lives in Finder.
