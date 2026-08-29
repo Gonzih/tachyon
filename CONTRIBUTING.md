@@ -1,6 +1,10 @@
 # Contributing a provider
 
-> **If you are a coding agent:** this document is your task spec. Implement one
+> **If you are a coding agent:** this document is your task spec, and
+> [AGENTS.md](AGENTS.md) is the operating manual for this repository — read
+> both before touching anything. AGENTS.md covers the build/test loop, repo
+> layout, release process, and the hard rules (authority, credentials,
+> honesty); it is as binding as anything here. Implement one
 > file conforming to `UsageProvider`, register it, add a glyph, prove it with
 > `swift run Tachyon --smoke`, open a PR titled `provider: <name>`. Everything
 > you need is below. **Never leak credentials** — no tokens, account ids, or
