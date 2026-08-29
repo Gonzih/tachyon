@@ -97,6 +97,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(onPace.projectedAtReset ?? 0, 110, accuracy: 1)
         XCTAssertEqual(onPace.bandPercent, 70)
         XCTAssertEqual(onPace.percentUsed, 55)
+        XCTAssertTrue(onPace.isPaceHot, "hot flag drives the ring/shim pulse")
 
         // Same point in the window at 30% → projected 60 → no escalation.
         let underPace = UsageWindow(

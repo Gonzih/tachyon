@@ -105,12 +105,16 @@ extension NSScreen {
         return (deviceDescription[key] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) }
     }
 
-    /// Resolves the user's preferred screen, falling back to main on disconnect.
+    /// Resolves the user's preferred screen, falling back to the PRIMARY
+    /// display. Never `.main`: main follows keyboard focus across monitors,
+    /// and a drifting home screen splits the presence state machine from the
+    /// pill's actual frame (pill docked on screen A while overlap and hot-zone
+    /// tests run against screen B — shim vanishes, pill stays behind).
     static func preferred() -> NSScreen? {
         if let wanted = Settings.preferredDisplayID,
            let match = NSScreen.screens.first(where: { $0.displayID == wanted }) {
             return match
         }
-        return NSScreen.main ?? NSScreen.screens.first
+        return NSScreen.screens.first
     }
 }

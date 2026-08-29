@@ -39,13 +39,16 @@ final class ShimPanel: NSPanel {
         let dark = shimView.effectiveAppearance.isDarkTheme
         shimView.segments = slots.map { slot in
             guard let percent = slot.ringBandPercent ?? slot.ringPercent else {
-                return dark
+                let idle = dark
                     ? NSColor.white.withAlphaComponent(0.25)
                     : NSColor.black.withAlphaComponent(0.22)
+                return ShimView.Segment(color: idle, isPaceHot: false)
             }
-            return UsageColor.nsBand(percent, darkAppearance: dark)
+            return ShimView.Segment(
+                color: UsageColor.nsBand(percent, darkAppearance: dark),
+                isPaceHot: slot.ringIsPaceHot
+            )
         }
-        shimView.needsDisplay = true
     }
 
     /// Places the shim flush to the right edge, matching the pill's band.
@@ -63,29 +66,77 @@ final class ShimPanel: NSPanel {
         )
     }
 
+    /// Layer-per-segment so a pace-hot segment can pulse via a repeating Core
+    /// Animation — the render server does the breathing, the app spends zero
+    /// CPU per frame. Segments are laid out top to bottom like the rings.
     private final class ShimView: NSView {
-        var segments: [NSColor] = []
+        struct Segment {
+            let color: NSColor
+            let isPaceHot: Bool
+        }
 
-        override var isFlipped: Bool { true }
+        var segments: [Segment] = [] {
+            didSet { needsLayout = true }
+        }
 
-        override func draw(_ dirtyRect: NSRect) {
-            super.draw(dirtyRect)
+        private var segmentLayers: [CALayer] = []
+        private static let pulseKey = "tachyon.pacePulse"
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func layout() {
+            super.layout()
+
+            while segmentLayers.count < segments.count {
+                let segmentLayer = CALayer()
+                layer?.addSublayer(segmentLayer)
+                segmentLayers.append(segmentLayer)
+            }
+            while segmentLayers.count > segments.count {
+                segmentLayers.removeLast().removeFromSuperlayer()
+            }
             guard !segments.isEmpty else { return }
+
             let count = CGFloat(segments.count)
             let totalGap = ShimPanel.gap * (count - 1)
             let segmentHeight = (bounds.height - totalGap) / count
             guard segmentHeight > 0 else { return }
 
-            for (index, color) in segments.enumerated() {
-                let y = CGFloat(index) * (segmentHeight + ShimPanel.gap)
-                let rect = NSRect(x: 0, y: y, width: bounds.width, height: segmentHeight)
-                let path = NSBezierPath(
-                    roundedRect: rect,
-                    xRadius: bounds.width / 2,
-                    yRadius: bounds.width / 2
+            let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            for (index, segment) in segments.enumerated() {
+                let segmentLayer = segmentLayers[index]
+                // Layer space is bottom-left origin; index 0 belongs at the top.
+                let top = CGFloat(index) * (segmentHeight + ShimPanel.gap)
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                segmentLayer.frame = NSRect(
+                    x: 0, y: bounds.height - top - segmentHeight,
+                    width: bounds.width, height: segmentHeight
                 )
-                color.withAlphaComponent(0.6).setFill()
-                path.fill()
+                segmentLayer.cornerRadius = bounds.width / 2
+                segmentLayer.backgroundColor = segment.color.withAlphaComponent(0.6).cgColor
+                CATransaction.commit()
+
+                if segment.isPaceHot, !reduceMotion {
+                    if segmentLayer.animation(forKey: Self.pulseKey) == nil {
+                        let pulse = CABasicAnimation(keyPath: "opacity")
+                        pulse.fromValue = 1.0
+                        pulse.toValue = 0.35
+                        pulse.duration = 0.9
+                        pulse.autoreverses = true
+                        pulse.repeatCount = .infinity
+                        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                        segmentLayer.add(pulse, forKey: Self.pulseKey)
+                    }
+                } else {
+                    segmentLayer.removeAnimation(forKey: Self.pulseKey)
+                }
             }
         }
     }

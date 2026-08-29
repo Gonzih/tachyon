@@ -62,6 +62,12 @@ struct ProviderSlot: Identifiable, Equatable {
         return state.snapshot?.primary.bandPercent
     }
 
+    /// Ring window on pace to exhaust before its reset → ring and shim pulse.
+    var ringIsPaceHot: Bool {
+        guard !awaitingFirstSnapshot else { return false }
+        return state.snapshot?.primary.isPaceHot ?? false
+    }
+
     var ringSpend: Double? {
         guard !awaitingFirstSnapshot else { return nil }
         return state.snapshot?.primary.spendUSD

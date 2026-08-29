@@ -105,13 +105,17 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         return percent / elapsedFraction
     }
 
+    /// On pace to exhaust before the reset. Drives band escalation and the
+    /// pulse on ring and shim.
+    var isPaceHot: Bool { (projectedAtReset ?? 0) >= 100 }
+
     /// What the color bands judge: the raw percent, lifted to the NEXT band's
     /// floor when the window is on pace to exhaust before it resets
     /// (projection ≥ 100). One band, never more — pace is a warning, not a
     /// measurement. Displayed numbers stay `percentUsed`; only color moves.
     var bandPercent: Double? {
         guard let percent = percentUsed else { return nil }
-        guard let projected = projectedAtReset, projected >= 100 else { return percent }
+        guard isPaceHot else { return percent }
         switch percent {
         case ..<50: return 50   // green → yellow
         case ..<70: return 70   // yellow → orange

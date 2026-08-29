@@ -123,6 +123,9 @@ struct PillShape: Shape {
 struct RingModule: View {
     let slot: ProviderSlot
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Oscillates while the ring window is pace-hot; drives the arc pulse.
+    @State private var pulsing = false
     private var theme: Theme { Theme(colorScheme) }
 
     private var percent: Double? { slot.ringPercent }
@@ -171,6 +174,18 @@ struct RingModule: View {
                         // Arc starts at 12 o'clock and sweeps clockwise.
                         .rotationEffect(.degrees(-90))
                         .animation(.easeOut(duration: 0.4), value: percent)
+                        // Pace-hot: the arc breathes — the color says how close,
+                        // the pulse says "faster than the clock".
+                        .opacity(pulsing ? 0.4 : 1)
+                        .task(id: slot.ringIsPaceHot && !reduceMotion) {
+                            if slot.ringIsPaceHot && !reduceMotion {
+                                withAnimation(
+                                    .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                                ) { pulsing = true }
+                            } else {
+                                withAnimation(.easeOut(duration: 0.2)) { pulsing = false }
+                            }
+                        }
                 }
 
                 GlyphView(glyph: slot.glyph, size: PillMetrics.glyphSize, color: theme.fg)
