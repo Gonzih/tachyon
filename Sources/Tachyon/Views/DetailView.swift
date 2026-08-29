@@ -130,6 +130,9 @@ private struct WindowRow: View {
             : String(format: "$%.2f", usd)
     }
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Oscillates while this window is pace-hot; drives the bar pulse.
+    @State private var pulsing = false
     private var theme: Theme { Theme(colorScheme) }
 
     var body: some View {
@@ -157,6 +160,17 @@ private struct WindowRow: View {
                         Capsule()
                             .fill(UsageColor.band(window.bandPercent ?? percent, theme: theme))
                             .frame(width: geometry.size.width * percent / 100)
+                            // Pace-hot: same breathing as the ring and shim.
+                            .opacity(pulsing ? 0.4 : 1)
+                            .task(id: window.isPaceHot && !reduceMotion) {
+                                if window.isPaceHot && !reduceMotion {
+                                    withAnimation(
+                                        .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                                    ) { pulsing = true }
+                                } else {
+                                    withAnimation(.easeOut(duration: 0.2)) { pulsing = false }
+                                }
+                            }
                     }
                 }
             }
