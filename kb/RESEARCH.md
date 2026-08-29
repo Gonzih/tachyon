@@ -43,6 +43,19 @@ Source-dives performed 2026-08-28 (repos: 0xNyk/llmquota, AmirTlinov/Limits, ste
 - Schema-drift guard: `hasAnyOwn(value, KNOWN_FIELDS)` before trusting a payload (llmquota).
 - Freshness as first-class UI state (`freshUntil = generatedAt + TTL`), never silently stale (Limits).
 
+## OpenRouter — verified live 2026-08-28
+
+Both endpoints take `Authorization: Bearer <key>`; scopes differ:
+
+- `GET /api/v1/credits` — **account-wide**: `total_credits` (prepaid),
+  `total_usage` (all keys, lifetime). The main metric → ring. Prepaid, never
+  refreshes → no reset time.
+- `GET /api/v1/auth/key` — **this key only**: cumulative `usage`, optional
+  `limit`/`limit_remaining`, `is_free_tier`, plus native `usage_daily`/
+  `usage_weekly`/`usage_monthly` (added upstream sometime post-launch — could
+  replace Tachyon's month-baseline hack) and `byok_usage*` variants. Spend
+  through other keys (e.g. omp's own credential store) is invisible here.
+
 ## Competitive field (for positioning)
 
 CodexBar (Swift menu bar, ~90 providers), Limits (Swift menu bar, Codex+Claude), ccseva (Swift menu bar, Claude), llmquota (TUI), ccusage (CLI statusline), caut (Rust CLI), assorted Python tray/TUI tools. Nobody does an edge-docked ambient pill with overlap-aware shim. That's our lane.

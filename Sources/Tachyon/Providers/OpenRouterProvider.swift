@@ -4,10 +4,14 @@ import Foundation
 /// just an API key the user pastes into Settings (stored in Tachyon's own
 /// Keychain item, never UserDefaults).
 ///
-/// `GET /api/v1/auth/key` reports the key's cumulative `usage` (USD) and an
-/// optional `limit`. A limited key is a real bounded window → percent ring.
-/// An unlimited key gets monthly spend — cumulative usage minus a month-start
-/// baseline Tachyon snapshots locally — measured against the budget setting.
+/// Two endpoints, two scopes:
+/// - `GET /api/v1/credits` — account-wide `total_usage` against prepaid
+///   `total_credits`. The main metric: a real bounded window → percent ring,
+///   "$100.17 of $100". Credits never refresh, so no reset time.
+/// - `GET /api/v1/auth/key` — THIS key's cumulative `usage` (USD) and optional
+///   `limit`. A limited key is a bounded window; otherwise monthly spend —
+///   cumulative usage minus a month-start baseline Tachyon snapshots locally —
+///   measured against the budget setting.
 actor OpenRouterProvider: UsageProvider {
     nonisolated let id = "openrouter"
     nonisolated let displayName = "OpenRouter"
@@ -16,7 +20,7 @@ actor OpenRouterProvider: UsageProvider {
     nonisolated let pollInterval: TimeInterval = 120
     nonisolated let category: ProviderCategory = .infrastructure
     nonisolated let about: String? =
-        "Spend across every model routed through your OpenRouter key — pay-as-you-go or key-limited."
+        "Account credits plus this key\u{2019}s spend across every model routed through OpenRouter."
     nonisolated let settings: [ProviderSetting] = [
         ProviderSetting(
             key: "apiKey",
@@ -33,6 +37,7 @@ actor OpenRouterProvider: UsageProvider {
     ]
 
     private static let keyURL = URL(string: "https://openrouter.ai/api/v1/auth/key")!
+    private static let creditsURL = URL(string: "https://openrouter.ai/api/v1/credits")!
 
     /// Kept so transient failures degrade to `.stale`.
     private var lastGood: (snapshot: UsageSnapshot, at: Date)?
@@ -53,10 +58,9 @@ actor OpenRouterProvider: UsageProvider {
         guard let key = Settings.secretSetting("apiKey", provider: id) else {
             return .authError("Add API key in Settings")
         }
+        let headers = ["Authorization": "Bearer \(key)"]
         do {
-            let result = try await Usage.get(Self.keyURL, headers: [
-                "Authorization": "Bearer \(key)",
-            ])
+            let result = try await Usage.get(Self.keyURL, headers: headers)
             if result.status == 401 || result.status == 403 {
                 return .authError("API key rejected — check Settings")
             }
@@ -78,24 +82,36 @@ actor OpenRouterProvider: UsageProvider {
             // reset — credits are prepaid and never refresh. No reset time.
             let monthSpend = Self.monthSpend(cumulative: usage)
 
+            // Account credits — the main metric. Best-effort second call;
+            // the key windows must survive its failure.
+            var creditsWindow: UsageWindow?
+            if let credits = try? await Usage.get(Self.creditsURL, headers: headers),
+               (200..<300).contains(credits.status) {
+                let account = JSONValue.parse(credits.body)["data"]
+                if let total = account["total_credits"].double,
+                   let used = account["total_usage"].double, total > 0 {
+                    creditsWindow = UsageWindow(
+                        label: "Credits", spendUSD: used, budgetUSD: total, resetsAt: nil)
+                }
+            }
+
+            // Build in ring-priority order: account credits, then a hard key
+            // limit, then the budget-measured month — windows[0] is the ring.
             var windows: [UsageWindow] = []
-            let primary: UsageWindow
+            if let creditsWindow {
+                windows.append(creditsWindow)
+            }
             if let limit, limit > 0 {
                 // A limited key is a genuine bounded window.
-                primary = UsageWindow(label: "Key limit", percentUsed: usage / limit * 100, resetsAt: nil)
-                windows.append(primary)
                 windows.append(UsageWindow(
-                    label: "This month", spendUSD: monthSpend,
-                    budgetUSD: Settings.moneySetting("budget.monthly", provider: id),
-                    resetsAt: nil))
-            } else {
-                primary = UsageWindow(
-                    label: "This month", spendUSD: monthSpend,
-                    budgetUSD: Settings.moneySetting("budget.monthly", provider: id),
-                    resetsAt: nil)
-                windows.append(primary)
+                    label: "Key limit", percentUsed: usage / limit * 100, resetsAt: nil))
             }
-            windows.append(UsageWindow(label: "All time", spendUSD: usage, resetsAt: nil))
+            windows.append(UsageWindow(
+                label: "Key · this month", spendUSD: monthSpend,
+                budgetUSD: Settings.moneySetting("budget.monthly", provider: id),
+                resetsAt: nil))
+            windows.append(UsageWindow(label: "Key · all time", spendUSD: usage, resetsAt: nil))
+            let primary = windows[0]
 
             let snapshot = UsageSnapshot(
                 primary: primary,
