@@ -7,6 +7,17 @@ edge of your screen. Native macOS, zero config.
 
 <p align="center"><img src="assets/tachyon-demo.gif" width="680" alt="Tachyon: shim on the screen edge, mouse in, pill reveals, popovers per provider"></p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/claude-dark.png">
+    <img src="assets/screenshots/claude-light.png" width="410" alt="Claude popover: session and weekly bars with reset times">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/codex-dark.png">
+    <img src="assets/screenshots/codex-light.png" width="410" alt="Codex popover: weekly window at 100%">
+  </picture>
+</p>
+
 When a window overlaps the pill it collapses to a 5pt color sliver. Red sliver —
 you're nearly out. Mouse to the edge to bring it back.
 
