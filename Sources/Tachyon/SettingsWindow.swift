@@ -6,16 +6,24 @@ import ServiceManagement
 /// doubles as a diagnostic view (presence, last poll, plan) and carries the
 /// provider's Enabled toggle plus its declared settings, rendered generically.
 @MainActor
+@Observable
+final class SettingsSelection {
+    var id: String = "general"
+}
+
+@MainActor
 enum SettingsWindow {
     private static var window: NSWindow?
+    private static let selection = SettingsSelection()
 
-    static func show(model: UsageModel) {
+    static func show(model: UsageModel, selecting providerID: String? = nil) {
+        if let providerID { selection.id = providerID }
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let hosting = NSHostingController(rootView: SettingsRoot(model: model))
+        let hosting = NSHostingController(rootView: SettingsRoot(model: model, selection: selection))
         let panel = NSWindow(contentViewController: hosting)
         panel.styleMask = [.titled, .closable]
         panel.title = "Tachyon Settings"
@@ -33,7 +41,7 @@ enum SettingsWindow {
 
 private struct SettingsRoot: View {
     let model: UsageModel
-    @State private var selection: String = "general"
+    @Bindable var selection: SettingsSelection
 
     /// Detected = anything installed, signed in or not — the pane is the
     /// diagnostic surface, so signed-out providers belong here too.
@@ -44,12 +52,12 @@ private struct SettingsRoot: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                SidebarRow(title: "General", glyph: nil, selected: selection == "general")
-                    .onTapGesture { selection = "general" }
+                SidebarRow(title: "General", glyph: nil, selected: selection.id == "general")
+                    .onTapGesture { selection.id = "general" }
                 Divider().padding(.vertical, 6)
                 ForEach(visibleSlots) { slot in
-                    SidebarRow(title: slot.shortName, glyph: slot.glyph, selected: selection == slot.id)
-                        .onTapGesture { selection = slot.id }
+                    SidebarRow(title: slot.shortName, glyph: slot.glyph, selected: selection.id == slot.id)
+                        .onTapGesture { selection.id = slot.id }
                 }
                 Spacer()
             }
@@ -60,9 +68,9 @@ private struct SettingsRoot: View {
             Divider()
 
             Group {
-                if selection == "general" {
+                if selection.id == "general" {
                     GeneralPane()
-                } else if let slot = model.slot(id: selection) {
+                } else if let slot = model.slot(id: selection.id) {
                     ProviderPane(model: model, slot: slot)
                 } else {
                     GeneralPane()

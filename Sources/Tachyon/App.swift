@@ -30,15 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let edge = EdgeController(model: model)
         self.edge = edge
 
-        edge.onSettingsRequested = { [weak self] in self?.showSettings() }
-        edge.onPillRightClick = { [weak self] event, view in
-            guard let self else { return }
-            // Same menu as the status item — the status item can be swallowed
-            // by menu-bar overflow on notched Macs, so the pill must never be
-            // stranded without its controls.
-            let menu = NSMenu()
-            menu.delegate = self
-            NSMenu.popUpContextMenu(menu, with: event, for: view)
+        edge.onPillRightClick = { [weak self] providerID in
+            self?.openSettings(selecting: providerID)
         }
         model.onSlotsChanged = { [weak edge, weak self] in
             edge?.rebuild()
@@ -211,6 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
+        menu.addItem(.separator())
 
         let refresh = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
         refresh.target = self
@@ -403,6 +397,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func showSettings() {
         SettingsWindow.show(model: model)
+    }
+
+    func openSettings(selecting providerID: String?) {
+        SettingsWindow.show(model: model, selecting: providerID)
     }
 
     @objc private func showAbout() {

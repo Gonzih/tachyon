@@ -10,16 +10,9 @@ import SwiftUI
 @MainActor
 final class EdgeController {
     /// The app layer supplies the context menu (same one as the status item).
-    var onPillRightClick: ((NSEvent, NSView) -> Void)?
-    /// Fired when the pill's gear affordance is clicked.
-    var onSettingsRequested: (() -> Void)?
-
-    private var gearVisible = false {
-        didSet {
-            guard gearVisible != oldValue else { return }
-            hostView.rootView = PillView(slots: visibleSlots, gearVisible: gearVisible)
-        }
-    }
+    /// Right-click anywhere on the pill: straight to Settings, focused on the
+    /// clicked provider's pane when the click landed on a ring.
+    var onPillRightClick: ((String?) -> Void)?
 
     enum PresenceState {
         case docked
@@ -73,7 +66,10 @@ final class EdgeController {
         hostView.onClick = { [weak self] point in self?.pillClicked(at: point) }
         hostView.onRightClick = { [weak self] event in
             guard let self else { return }
-            self.onPillRightClick?(event, self.hostView)
+            let point = self.hostView.convert(event.locationInWindow, from: nil)
+            let id = PillMetrics.moduleIndex(atY: point.y, count: self.moduleCount)
+                .flatMap { self.visibleSlots[safe: $0]?.id }
+            self.onPillRightClick?(id)
         }
 
         popover.onPointerInside = { [weak self] inside in self?.popoverPointer(inside: inside) }
@@ -119,7 +115,7 @@ final class EdgeController {
     /// every snapshot.
     func rebuild() {
         let slots = visibleSlots
-        hostView.rootView = PillView(slots: slots, gearVisible: gearVisible)
+        hostView.rootView = PillView(slots: slots)
         shim.update(slots: slots)
 
         guard !slots.isEmpty, let screen = currentScreen else {
@@ -373,7 +369,6 @@ final class EdgeController {
     }
 
     private func pillPointer(inside: Bool) {
-        gearVisible = inside
         pointerInPill = inside
         if inside {
             collapseWorkItem?.cancel()
@@ -474,11 +469,6 @@ final class EdgeController {
     }
 
     private func pillClicked(at point: NSPoint) {
-        // The gear lives in the pill's bottom padding/taper band.
-        if point.y > PillMetrics.gearZoneTop(moduleCount: moduleCount) {
-            onSettingsRequested?()
-            return
-        }
         guard let index = PillMetrics.moduleIndex(atY: point.y, count: moduleCount),
               let slot = visibleSlots[safe: index] else { return }
 
