@@ -18,7 +18,6 @@ actor CursorProvider: UsageProvider {
     nonisolated let glyph = ProviderGlyph.cursor
     /// Billing-cycle usage moves slowly.
     nonisolated let pollInterval: TimeInterval = 120
-    nonisolated let isExperimental = true
 
     private static let usageURL = URL(
         string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage")!

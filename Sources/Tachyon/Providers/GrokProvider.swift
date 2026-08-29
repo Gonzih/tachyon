@@ -1,7 +1,6 @@
 import Foundation
 
-/// Grok CLI usage. **Experimental** — the mechanics come from an ecosystem
-/// source-dive, not a live authed machine, so every path degrades gracefully.
+/// Grok CLI usage.
 ///
 /// This file is also the worked example in `CONTRIBUTING.md`: a provider is one
 /// file conforming to `UsageProvider`, one registry line, one glyph.
@@ -12,7 +11,6 @@ actor GrokProvider: UsageProvider {
     nonisolated let glyph = ProviderGlyph.grok
     /// The weekly credit window moves slowly; 120s is plenty.
     nonisolated let pollInterval: TimeInterval = 120
-    nonisolated let isExperimental = true
 
     private static let billingURL = URL(string: "https://cli-chat-proxy.grok.com/v1/billing?format=credits")!
     private static let authGuidance = "Run `grok` to refresh sign-in"
