@@ -232,15 +232,18 @@ struct ProviderSetting: Sendable, Identifiable {
 
 ### 8.2 Settings window
 
-- Standard macOS settings-style window, opened from the status menu / pill
-  context menu ("Settings… ⌘,"). LSUIElement app: window activates app
-  temporarily.
+- Standard macOS settings-style window, opened from the status menu, the pill
+  context menu ("Settings… ⌘,"), **and from the pill itself**: hovering the
+  pill reveals a small gear affordance at its foot (fades in with the same
+  ease the popovers use); clicking it opens Settings. LSUIElement app: window
+  activates app temporarily.
 - Left sidebar: **General** (display picker, launch at login — migrated from
   the menu; menu keeps quick toggles), then one row per *detected* provider
   (glyph + short name, matching pill visual language).
-- Right pane: provider status header (presence, last poll, plan) + the
-  declared settings form. Settings-less providers show status only — the pane
-  doubles as a diagnostic view.
+- Right pane: provider status header (presence, last poll, plan) with an
+  **Enabled toggle** (same state as the menu checkmarks, `provider.enabled.*`),
+  then the declared settings form. Settings-less providers show status +
+  toggle — the pane doubles as a diagnostic view.
 
 ### 8.3 Budget (first declared setting)
 
