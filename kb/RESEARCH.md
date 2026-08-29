@@ -70,3 +70,17 @@ npm `@oh-my-pi/pi-coding-agent` (bun runtime), config root `~/.omp`
   `omp stats --json` exist but spawn bun — SQLite is the cheap path.
 - Spend design shipped: ring = worst bounded window when any exists, else
   "$X today" spend label (UsageWindow.spendUSD, additive to the protocol).
+
+
+## Ollama — investigated 2026-08-28, NO provider shipped
+
+No usage/quota API exists, local or cloud. Confirmed via omp'''s own fetcher
+(pi-ai/src/usage/ollama.ts): an empty stub noting "Ollama does not expose a
+standalone quota usage API; per-response token usage is reported during
+requests" — registered "until a quota endpoint is available." Local ollama
+additionally has nothing to meter (no limits, no cost).
+
+Decision: no standalone provider — a ring that cannot be honest does not ship.
+Ollama Cloud used through omp is already metered transitively (omp records
+per-response cost in agent.db, which OmpProvider reads). Revisit when Ollama
+ships a quota endpoint; keys/identity likely under ~/.ollama.
