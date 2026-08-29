@@ -11,6 +11,7 @@ actor OllamaProvider: UsageProvider {
     nonisolated let shortName = "Ollama"
     nonisolated let glyph = ProviderGlyph.ollama
     nonisolated let pollInterval: TimeInterval = 120
+    nonisolated let category: ProviderCategory = .infrastructure
     nonisolated let isExperimental = true
     nonisolated let about: String? =
         "Daemon activity, counted from Ollama's own log. Ollama doesn't expose cloud quota yet — when it does, this becomes a real usage ring."

@@ -14,6 +14,7 @@ actor OpenRouterProvider: UsageProvider {
     nonisolated let shortName = "OpenRouter"
     nonisolated let glyph = ProviderGlyph.openrouter
     nonisolated let pollInterval: TimeInterval = 120
+    nonisolated let category: ProviderCategory = .infrastructure
     nonisolated let about: String? =
         "Spend across every model routed through your OpenRouter key — pay-as-you-go or key-limited."
     nonisolated let settings: [ProviderSetting] = [

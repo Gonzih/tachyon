@@ -174,6 +174,8 @@ protocol UsageProvider: Sendable {
     /// the FSEvents machinery: on any change it calls `fileChanged(_:)` with
     /// the triggering path, then re-polls the provider. Empty = no watching.
     nonisolated var watchPaths: [String] { get }
+    /// Menu/Settings grouping. Defaulted to `.subscription`.
+    nonisolated var category: ProviderCategory { get }
     /// Declared, optional refinements — rendered generically by the Settings
     /// window. Defaults must always leave the provider fully functional.
     nonisolated var settings: [ProviderSetting] { get }
@@ -192,10 +194,24 @@ extension UsageProvider {
     nonisolated var settings: [ProviderSetting] { [] }
     nonisolated var about: String? { nil }
     nonisolated var watchPaths: [String] { [] }
+    nonisolated var category: ProviderCategory { .subscription }
     func fileChanged(_ path: String) async {}
 }
 
 // MARK: - Registry
+
+/// Where a provider sits in menus and the Settings sidebar. Order here is
+/// display order.
+enum ProviderCategory: Int, Sendable, Comparable, Equatable {
+    /// Subscription coding harnesses (Claude Code, Codex, Grok, Cursor).
+    case subscription
+    /// Open harnesses that route to many providers (Oh My Pi).
+    case openHarness
+    /// Model infrastructure and routers (OpenRouter, Ollama).
+    case infrastructure
+
+    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+}
 
 /// One declared provider setting. `key` is a SUFFIX — the app composes the
 /// full UserDefaults key as "provider.<providerID>.<key>" (distinct from the

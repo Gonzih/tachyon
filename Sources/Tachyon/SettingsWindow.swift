@@ -55,7 +55,10 @@ private struct SettingsRoot: View {
                 SidebarRow(title: "General", glyph: nil, selected: selection.id == "general")
                     .onTapGesture { selection.id = "general" }
                 Divider().padding(.vertical, 6)
-                ForEach(visibleSlots) { slot in
+                ForEach(Array(visibleSlots.enumerated()), id: \.element.id) { index, slot in
+                    if index > 0, visibleSlots[index - 1].category != slot.category {
+                        Divider().padding(.vertical, 4)
+                    }
                     SidebarRow(title: slot.shortName, glyph: slot.glyph, selected: selection.id == slot.id)
                         .onTapGesture { selection.id = slot.id }
                 }

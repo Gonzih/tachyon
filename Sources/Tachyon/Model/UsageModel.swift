@@ -37,6 +37,7 @@ struct ProviderSlot: Identifiable, Equatable {
     let isExperimental: Bool
     let providerSettings: [ProviderSetting]
     let about: String?
+    let category: ProviderCategory
     var presence: ProviderPresence = .notInstalled
     var state: ProviderState = .unavailable
     var enabled: Bool = true
@@ -106,6 +107,7 @@ final class UsageModel {
                 isExperimental: provider.isExperimental,
                 providerSettings: provider.settings,
                 about: provider.about,
+                category: provider.category,
                 enabled: Settings.providerEnabled(provider.id)
             )
         }

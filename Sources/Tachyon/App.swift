@@ -170,7 +170,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Every supported harness, in registry order — active ones are
         // toggleable, inactive ones sit grayed with the reason why.
+        var lastCategory: ProviderCategory?
         for slot in model.slots {
+            if let last = lastCategory, last != slot.category {
+                menu.addItem(.separator())
+            }
+            lastCategory = slot.category
             let item: NSMenuItem
             switch slot.presence {
             case .notInstalled:
