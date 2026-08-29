@@ -167,30 +167,28 @@ actor ClaudeProvider: UsageProvider {
     static func decode(_ root: JSONValue, subscription: String?, tier: String?) -> UsageSnapshot? {
         let limits = root["limits"].array
 
-        // Ring: five_hour, else limits[] kind == "session". Never a weekly window.
+        // Session window: five_hour, else limits[] kind == "session".
         let fiveHour = root["five_hour"]
         let sessionLimit = limits.first { $0["kind"].string == "session" }
 
-        let primary: UsageWindow
+        var windows: [UsageWindow] = []
         if let percent = fiveHour["utilization"].double {
-            primary = UsageWindow(
+            windows.append(UsageWindow(
                 label: "Current session",
                 percentUsed: percent,
-                resetsAt: fiveHour["resets_at"].isoDate
-            )
+                resetsAt: fiveHour["resets_at"].isoDate,
+                windowSeconds: 5 * 3600
+            ))
         } else if let sessionLimit, let percent = sessionLimit["percent"].double {
-            primary = UsageWindow(
+            windows.append(UsageWindow(
                 label: "Current session",
                 percentUsed: percent,
-                resetsAt: sessionLimit["resets_at"].isoDate
-            )
-        } else {
-            return nil
+                resetsAt: sessionLimit["resets_at"].isoDate,
+                windowSeconds: 5 * 3600
+            ))
         }
 
-        var windows: [UsageWindow] = [primary]
-
-        // Popover rows from limits[], skipping the session entry (already the ring)
+        // limits[] rows, skipping the session entry (already captured above)
         // and anything the server marks inactive.
         var sawWeeklyAll = false
         for limit in limits {
@@ -202,7 +200,8 @@ actor ClaudeProvider: UsageProvider {
             windows.append(UsageWindow(
                 label: label(forKind: kind, scope: limit["scope"]),
                 percentUsed: percent,
-                resetsAt: limit["resets_at"].isoDate
+                resetsAt: limit["resets_at"].isoDate,
+                windowSeconds: kind.contains("week") ? 7 * 86400 : nil
             ))
         }
 
@@ -211,13 +210,19 @@ actor ClaudeProvider: UsageProvider {
             windows.append(UsageWindow(
                 label: "Weekly",
                 percentUsed: percent,
-                resetsAt: root["seven_day"]["resets_at"].isoDate
+                resetsAt: root["seven_day"]["resets_at"].isoDate,
+                windowSeconds: 7 * 86400
             ))
         }
 
+        guard !windows.isEmpty else { return nil }
+
+        // Worst-active-bounded-window rule: the ring is whichever hard limit
+        // is closest to blocking — a weekly at 70% outranks a session at 10%.
+        let ordered = windows.worstFirst()
         return UsageSnapshot(
-            primary: primary,
-            windows: windows,
+            primary: ordered[0],
+            windows: ordered,
             asOf: Date(),
             detail: planDetail(subscription: subscription, tier: tier)
         )

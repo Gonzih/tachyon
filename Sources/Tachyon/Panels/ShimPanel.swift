@@ -38,7 +38,7 @@ final class ShimPanel: NSPanel {
     func update(slots: [ProviderSlot]) {
         let dark = shimView.effectiveAppearance.isDarkTheme
         shimView.segments = slots.map { slot in
-            guard let percent = slot.ringPercent else {
+            guard let percent = slot.ringBandPercent ?? slot.ringPercent else {
                 return dark
                     ? NSColor.white.withAlphaComponent(0.25)
                     : NSColor.black.withAlphaComponent(0.22)

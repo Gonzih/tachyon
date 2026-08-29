@@ -20,10 +20,25 @@ final class ProviderDecodeTests: XCTestCase {
     }
     """
 
-    func testClaudeRingIsFiveHour() {
+    func testClaudeSessionRingsWhileWorst() {
+        // Session 36 vs weeklies 11/14 — session is the worst window here.
         let snapshot = ClaudeProvider.decode(Data(claudeFixture.utf8))
         XCTAssertEqual(snapshot?.primary.percentUsed, 36)
         XCTAssertEqual(snapshot?.primary.label, "Current session")
+    }
+
+    func testClaudeWorstWindowTakesRing() {
+        let fixture = """
+        {
+          "five_hour": {"utilization": 10.0, "resets_at": "2026-08-29T00:29:59Z"},
+          "seven_day": {"utilization": 70.0, "resets_at": "2026-09-04T00:59:59Z"}
+        }
+        """
+        let snapshot = ClaudeProvider.decode(Data(fixture.utf8))
+        XCTAssertEqual(snapshot?.primary.label, "Weekly")
+        XCTAssertEqual(snapshot?.primary.percentUsed, 70)
+        // The session survives as a popover row behind the ring window.
+        XCTAssertTrue(snapshot?.windows.contains { $0.label == "Current session" } ?? false)
     }
 
     func testClaudeSkipsSessionAndInactiveLimits() {
@@ -45,11 +60,13 @@ final class ProviderDecodeTests: XCTestCase {
         XCTAssertEqual(snapshot?.primary.percentUsed, 62)
     }
 
-    func testClaudeNeverSubstitutesWeeklyIntoRing() {
+    func testClaudeWeeklyRingsWhenSessionMissing() {
         let fixture = """
         {"seven_day": {"utilization": 55.0, "resets_at": null}}
         """
-        XCTAssertNil(ClaudeProvider.decode(Data(fixture.utf8)))
+        let snapshot = ClaudeProvider.decode(Data(fixture.utf8))
+        XCTAssertEqual(snapshot?.primary.label, "Weekly")
+        XCTAssertEqual(snapshot?.primary.percentUsed, 55)
     }
 
     func testClaudeGarbageIsNilNotCrash() {

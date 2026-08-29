@@ -127,10 +127,14 @@ final class PopoverPanel: NSPanel {
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             self.animator().alphaValue = 0
         }, completionHandler: {
-            if self.targetProviderID == nil {
-                self.orderOut(nil)
+            // AppKit invokes this on the main thread; the closure just isn't
+            // typed that way.
+            MainActor.assumeIsolated {
+                if self.targetProviderID == nil {
+                    self.orderOut(nil)
+                }
+                self.alphaValue = 1
             }
-            self.alphaValue = 1
         })
     }
 

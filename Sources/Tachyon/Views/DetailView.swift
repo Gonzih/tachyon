@@ -155,7 +155,7 @@ private struct WindowRow: View {
                     Capsule().fill(theme.track(0.15))
                     if let percent = window.percentUsed {
                         Capsule()
-                            .fill(UsageColor.band(percent, theme: theme))
+                            .fill(UsageColor.band(window.bandPercent ?? percent, theme: theme))
                             .frame(width: geometry.size.width * percent / 100)
                     }
                 }

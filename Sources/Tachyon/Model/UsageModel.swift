@@ -55,6 +55,13 @@ struct ProviderSlot: Identifiable, Equatable {
         return state.snapshot?.primary.percentUsed
     }
 
+    /// Color-band input: `ringPercent` pace-escalated one band when the ring
+    /// window is on pace to exhaust before reset. Numbers display raw.
+    var ringBandPercent: Double? {
+        guard !awaitingFirstSnapshot else { return nil }
+        return state.snapshot?.primary.bandPercent
+    }
+
     var ringSpend: Double? {
         guard !awaitingFirstSnapshot else { return nil }
         return state.snapshot?.primary.spendUSD

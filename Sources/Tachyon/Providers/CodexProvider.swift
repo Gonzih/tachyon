@@ -123,22 +123,27 @@ actor CodexProvider: UsageProvider {
                 windows.append(UsageWindow(
                     label: "\(name) · \(primaryWindow.label)",
                     percentUsed: primaryWindow.percentUsed ?? 0,
-                    resetsAt: primaryWindow.resetsAt
+                    resetsAt: primaryWindow.resetsAt,
+                    windowSeconds: primaryWindow.windowSeconds
                 ))
             }
             if let secondaryWindow = window(from: nested["secondary_window"], fallbackLabel: name) {
                 windows.append(UsageWindow(
                     label: "\(name) · \(secondaryWindow.label)",
                     percentUsed: secondaryWindow.percentUsed ?? 0,
-                    resetsAt: secondaryWindow.resetsAt
+                    resetsAt: secondaryWindow.resetsAt,
+                    windowSeconds: secondaryWindow.windowSeconds
                 ))
             }
         }
 
+        // Worst-active-bounded-window rule: the ring is whichever window is
+        // closest to blocking, touched per-model side pools included.
+        let ordered = windows.worstFirst()
         let plan = root["plan_type"].string ?? planType
         return UsageSnapshot(
-            primary: primary,
-            windows: windows,
+            primary: ordered[0],
+            windows: ordered,
             asOf: Date(),
             detail: plan.map { "\($0.prefix(1).uppercased() + $0.dropFirst()) plan" }
         )
@@ -152,7 +157,8 @@ actor CodexProvider: UsageProvider {
         return UsageWindow(
             label: windowLabel(seconds: seconds) ?? fallbackLabel,
             percentUsed: percent,
-            resetsAt: resetsAt
+            resetsAt: resetsAt,
+            windowSeconds: seconds
         )
     }
 

@@ -142,7 +142,8 @@ struct RingModule: View {
 
     private var arcColor: Color {
         guard let percent else { return .clear }
-        return UsageColor.band(percent, theme: theme)
+        // Pace-escalated band; the arc length and label stay at the raw percent.
+        return UsageColor.band(slot.ringBandPercent ?? percent, theme: theme)
     }
 
     /// Percent wins when both exist (a budgeted spend window) — same

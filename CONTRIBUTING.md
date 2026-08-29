@@ -180,14 +180,69 @@ UsageSnapshot(
 )
 ```
 
-`UsageWindow(label:percentUsed:resetsAt:)` clamps its percentage to 0…100 in the
-initializer, so a server that reports 103% cannot overflow a ring.
+`UsageWindow(label:percentUsed:resetsAt:windowSeconds:)` clamps its percentage
+to 0…100 in the initializer, so a server that reports 103% cannot overflow a
+ring.
 
-Choose the ring window carefully: it should be **the limit that will bite
-first**, which is almost always the short rolling window rather than a weekly
-total. Claude's provider is explicit about this — it uses `five_hour`, falls back
-to the `session` entry, and returns `nil` rather than substituting a weekly
-number that would read as reassuring when it isn't.
+### The ring rule — worst active bounded window (aim here)
+
+**Every provider must aim at this.** The user is hard-blocked the moment *any*
+independent limit hits 100%, so the ring must show the window **closest to
+blocking them** — never a window that happens to look reassuring. A weekly at
+70% outranks a session at 10%: the session resets in hours, the weekly is the
+wall the user is actually walking toward. The goal of the whole app is "drain
+every token, know when to switch providers" — the ring is that decision at a
+glance.
+
+The recipe, step by step:
+
+1. **Compute each window's percent.** If the API gives you `used` and `limit`,
+   it is `used ÷ limit × 100`. Most APIs hand you the percent directly.
+2. **Classify each window.** A window is **hard** when it is an independent
+   provider limit that can block the user on its own (session, weekly,
+   per-model weekly, key limit). A window is **synthetic** when it is a spend
+   meter, a budget-derived percent (the user set the ceiling, the provider
+   won't enforce it), or a *breakdown* of another pool (a sub-meter that can
+   never bite on its own). In code the distinction is mechanical: hard windows
+   carry only `percentUsed`; synthetic ones carry `spendUSD`.
+3. **Build ALL your windows, then call `windows.worstFirst()`.** It moves the
+   highest-percent hard window to index 0 — index 0 is the ring. Synthetic
+   windows never outrank a hard one. Do not hand-pick a primary.
+4. **Keep every window as a popover row.** The ring answers "how close is the
+   nearest wall"; the popover answers "which wall".
+
+Only deviate when the provider's own semantics demand it (OpenRouter's
+prepaid credits are the account's true wall, so they lead), and say why in a
+comment.
+
+### Pace — burning faster than the clock
+
+A weekly at 70% with five days left is a much worse place than 70% with four
+hours left. Tachyon escalates the **color** (never the number) one band when a
+window is on pace to exhaust before it resets. The math, so any agent can
+reproduce it:
+
+```
+elapsed_fraction = 1 − (reset_at − now) ÷ window_duration
+projected_at_reset = percent_used ÷ elapsed_fraction
+```
+
+If `elapsed_fraction ≥ 0.1` (earlier projections are wild) and
+`projected_at_reset ≥ 100` — the user runs out before the reset at the current
+burn rate — the color lifts to the next band's floor: green→yellow,
+yellow→orange, orange→red. One band, never more: pace is a warning, not a
+measurement.
+
+Worked example: a weekly window (`window_duration = 604800`s) that resets in
+3.5 days → `elapsed_fraction = 0.5`. At 38% used, `projected = 76` → no
+escalation, colors read the raw 38. At 55% used, `projected = 110` → the bar
+shows 55% but wears orange instead of yellow.
+
+**Your only job as a provider author is to pass `windowSeconds`** when you
+know the duration (5h session = `18000`, weekly = `604800`; Codex hands you
+`limit_window_seconds` directly). `UsageWindow.projectedAtReset` and
+`.bandPercent` do the rest — leave `windowSeconds` nil and the window simply
+never pace-escalates.
 
 ## Step 3 — decoding without brittleness
 

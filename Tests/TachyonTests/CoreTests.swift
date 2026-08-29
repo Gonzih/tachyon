@@ -86,6 +86,54 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(UsageColor.band(100), UsageColor.red)
     }
 
+    // MARK: Pace projection & band escalation (CONTRIBUTING §"The ring rule")
+
+    func testPaceProjectionAndEscalation() {
+        // Half the week elapsed, 55% used → on pace for ~110 → lift one
+        // band: yellow territory colors as orange. Number stays 55.
+        let onPace = UsageWindow(
+            label: "Weekly", percentUsed: 55,
+            resetsAt: Date().addingTimeInterval(302_400), windowSeconds: 604_800)
+        XCTAssertEqual(onPace.projectedAtReset ?? 0, 110, accuracy: 1)
+        XCTAssertEqual(onPace.bandPercent, 70)
+        XCTAssertEqual(onPace.percentUsed, 55)
+
+        // Same point in the window at 30% → projected 60 → no escalation.
+        let underPace = UsageWindow(
+            label: "Weekly", percentUsed: 30,
+            resetsAt: Date().addingTimeInterval(302_400), windowSeconds: 604_800)
+        XCTAssertEqual(underPace.bandPercent, 30)
+    }
+
+    func testPaceNeedsSignal() {
+        // Only 4% of the window elapsed — projection suppressed, however hot
+        // the start looks.
+        let early = UsageWindow(
+            label: "Weekly", percentUsed: 20,
+            resetsAt: Date().addingTimeInterval(580_608), windowSeconds: 604_800)
+        XCTAssertNil(early.projectedAtReset)
+        XCTAssertEqual(early.bandPercent, 20)
+
+        // No known duration → no projection, band judges the raw percent.
+        let unknown = UsageWindow(
+            label: "Window", percentUsed: 80, resetsAt: Date().addingTimeInterval(60))
+        XCTAssertNil(unknown.projectedAtReset)
+        XCTAssertEqual(unknown.bandPercent, 80)
+    }
+
+    func testWorstFirstRule() {
+        let hardLow = UsageWindow(label: "Session", percentUsed: 20, resetsAt: nil)
+        let hardHigh = UsageWindow(label: "Weekly", percentUsed: 70, resetsAt: nil)
+        let budget = UsageWindow(label: "Month", spendUSD: 95, budgetUSD: 100, resetsAt: nil)
+
+        // Worst hard window moves to the front — index 0 is the ring.
+        XCTAssertEqual([budget, hardLow, hardHigh].worstFirst().first?.label, "Weekly")
+        // A budget-derived 95% is synthetic and never outranks a hard limit.
+        XCTAssertEqual([budget, hardLow].worstFirst().first?.label, "Session")
+        // No hard windows → order untouched.
+        XCTAssertEqual([budget].worstFirst().first?.label, "Month")
+    }
+
     // MARK: Pill geometry
 
     @MainActor func testPillHeightFormula() {

@@ -29,10 +29,13 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
     /// Unit label for `count` ("requests"). Nil unless `count` is set.
     let countUnit: String?
     let resetsAt: Date?
+    /// Full window duration in seconds (5h session = 18000, weekly = 604800).
+    /// Enables the pace projection; nil when the provider doesn't know it.
+    let windowSeconds: Double?
 
     var id: String { "\(label)-\(resetsAt?.timeIntervalSince1970 ?? -1)" }
 
-    init(label: String, percentUsed: Double, resetsAt: Date?) {
+    init(label: String, percentUsed: Double, resetsAt: Date?, windowSeconds: Double? = nil) {
         self.label = label
         self.percentUsed = Usage.clampPercent(percentUsed)
         self.spendUSD = nil
@@ -40,6 +43,7 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.count = nil
         self.countUnit = nil
         self.resetsAt = resetsAt
+        self.windowSeconds = windowSeconds
     }
 
     init(label: String, spendUSD: Double, resetsAt: Date?) {
@@ -50,6 +54,7 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.count = nil
         self.countUnit = nil
         self.resetsAt = resetsAt
+        self.windowSeconds = nil
     }
 
     /// Observed activity with no denominator: "42 requests".
@@ -61,6 +66,7 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.count = max(0, count)
         self.countUnit = unit
         self.resetsAt = resetsAt
+        self.windowSeconds = nil
     }
 
     /// Spend measured against a user-set budget: carries dollars AND a derived
@@ -80,6 +86,38 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.count = nil
         self.countUnit = nil
         self.resetsAt = resetsAt
+        self.windowSeconds = nil
+    }
+
+    // MARK: Pace (CONTRIBUTING §"The ring rule")
+
+    /// The percent this window will reach by its reset if the current burn
+    /// rate holds: `percentUsed ÷ elapsed fraction of the window`. Nil without
+    /// a known duration and a future reset, or when less than 10% of the
+    /// window has elapsed (early projections are wild).
+    var projectedAtReset: Double? {
+        guard let percent = percentUsed, let seconds = windowSeconds, seconds > 0,
+              let resets = resetsAt else { return nil }
+        let remaining = resets.timeIntervalSinceNow
+        guard remaining > 0, remaining < seconds else { return nil }
+        let elapsedFraction = 1 - remaining / seconds
+        guard elapsedFraction >= 0.1 else { return nil }
+        return percent / elapsedFraction
+    }
+
+    /// What the color bands judge: the raw percent, lifted to the NEXT band's
+    /// floor when the window is on pace to exhaust before it resets
+    /// (projection ≥ 100). One band, never more — pace is a warning, not a
+    /// measurement. Displayed numbers stay `percentUsed`; only color moves.
+    var bandPercent: Double? {
+        guard let percent = percentUsed else { return nil }
+        guard let projected = projectedAtReset, projected >= 100 else { return percent }
+        switch percent {
+        case ..<50: return 50   // green → yellow
+        case ..<70: return 70   // yellow → orange
+        case ..<90: return 90   // orange → red
+        default: return percent // already red
+        }
     }
 
     /// "$0", "$0.42", "$4.20", "$128" — compact, ring-label sized.
@@ -88,6 +126,29 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         if usd < 10 { return String(format: "$%.2f", usd) }
         if usd < 100 { return String(format: "$%.1f", usd) }
         return "$\(Int(usd.rounded()))"
+    }
+}
+
+extension Array where Element == UsageWindow {
+    /// Worst-active-bounded-window rule (CONTRIBUTING §"The ring rule"): the
+    /// ring must show the constraint closest to blocking the user — the
+    /// highest percent among HARD windows (real provider limits, percent-only).
+    /// Spend meters and budget-derived percents (`spendUSD != nil`) are
+    /// synthetic and never outrank a hard window. Moves the worst hard window
+    /// to the front — index 0 is the ring — leaving the rest in given order.
+    func worstFirst() -> [UsageWindow] {
+        var worstIndex: Int?
+        for (index, window) in enumerated()
+        where window.spendUSD == nil && window.percentUsed != nil {
+            if worstIndex == nil
+                || (window.percentUsed ?? 0) > (self[worstIndex!].percentUsed ?? 0) {
+                worstIndex = index
+            }
+        }
+        guard let worstIndex, worstIndex != 0 else { return self }
+        var reordered = self
+        reordered.insert(reordered.remove(at: worstIndex), at: 0)
+        return reordered
     }
 }
 
