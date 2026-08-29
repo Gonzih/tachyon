@@ -112,6 +112,12 @@ struct DetailView: View {
 /// Label + reset time, a 4pt bar, and the percent caption.
 private struct WindowRow: View {
     let window: UsageWindow
+
+    private var caption: String {
+        if let percent = window.percentUsed { return "\(Int(percent.rounded()))% Used" }
+        if let spend = window.spendUSD { return "\(UsageWindow.formatSpend(spend)) spent" }
+        return ""
+    }
     @Environment(\.colorScheme) private var colorScheme
     private var theme: Theme { Theme(colorScheme) }
 
@@ -136,14 +142,16 @@ private struct WindowRow: View {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule().fill(theme.track(0.15))
-                    Capsule()
-                        .fill(UsageColor.band(window.percentUsed, theme: theme))
-                        .frame(width: geometry.size.width * window.percentUsed / 100)
+                    if let percent = window.percentUsed {
+                        Capsule()
+                            .fill(UsageColor.band(percent, theme: theme))
+                            .frame(width: geometry.size.width * percent / 100)
+                    }
                 }
             }
             .frame(height: 4)
 
-            Text("\(Int(window.percentUsed.rounded()))% Used")
+            Text(caption)
                 .font(.system(size: 10))
                 .foregroundStyle(theme.fg(0.7))
         }

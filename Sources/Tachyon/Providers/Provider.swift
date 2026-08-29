@@ -17,8 +17,11 @@ enum Log {
 /// A single rate-limit window as surfaced to the UI.
 struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
     let label: String
-    /// Always clamped to 0...100 at the provider boundary.
-    let percentUsed: Double
+    /// Bounded meter, clamped to 0...100 at the provider boundary. Nil for
+    /// spend meters.
+    let percentUsed: Double?
+    /// Unbounded cost meter, in USD. Nil for percent meters.
+    let spendUSD: Double?
     let resetsAt: Date?
 
     var id: String { "\(label)-\(resetsAt?.timeIntervalSince1970 ?? -1)" }
@@ -26,7 +29,23 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
     init(label: String, percentUsed: Double, resetsAt: Date?) {
         self.label = label
         self.percentUsed = Usage.clampPercent(percentUsed)
+        self.spendUSD = nil
         self.resetsAt = resetsAt
+    }
+
+    init(label: String, spendUSD: Double, resetsAt: Date?) {
+        self.label = label
+        self.percentUsed = nil
+        self.spendUSD = max(0, spendUSD)
+        self.resetsAt = resetsAt
+    }
+
+    /// "$0", "$0.42", "$4.20", "$128" — compact, ring-label sized.
+    static func formatSpend(_ usd: Double) -> String {
+        if usd == 0 { return "$0" }
+        if usd < 10 { return String(format: "$%.2f", usd) }
+        if usd < 100 { return String(format: "$%.1f", usd) }
+        return "$\(Int(usd.rounded()))"
     }
 }
 
@@ -129,6 +148,7 @@ enum ProviderRegistry {
         CodexProvider(),
         GrokProvider(),
         CursorProvider(),
+        OmpProvider(),
     ]
 }
 

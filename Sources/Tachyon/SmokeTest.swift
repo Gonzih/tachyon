@@ -43,10 +43,10 @@ enum SmokeTest {
             case .ok(let snapshot), .stale(let snapshot, _):
                 let freshness = state.isStale ? "stale" : "live"
                 print("  state: \(freshness), \(snapshot.windows.count) window(s)")
-                print("  ring: \(snapshot.primary.label) — \(format(snapshot.primary.percentUsed))")
+                print("  ring: \(snapshot.primary.label) — \(meterText(snapshot.primary))")
                 for window in snapshot.windows {
                     let reset = ResetFormat.resetText(window.resetsAt) ?? "no reset time"
-                    print("    · \(window.label): \(format(window.percentUsed))  (\(reset))")
+                    print("    · \(window.label): \(meterText(window))  (\(reset))")
                 }
                 if let detail = snapshot.detail { print("  plan: \(detail)") }
             case .authError(let guidance):
@@ -64,6 +64,12 @@ enum SmokeTest {
             print("  \(format(percent)) → \(bandName(percent))")
         }
     }
+    static func meterText(_ window: UsageWindow) -> String {
+        if let percent = window.percentUsed { return format(percent) }
+        if let spend = window.spendUSD { return UsageWindow.formatSpend(spend) + " spent" }
+        return "-"
+    }
+
 
     private static func format(_ percent: Double) -> String {
         String(format: "%.0f%%", percent)

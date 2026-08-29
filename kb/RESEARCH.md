@@ -46,3 +46,27 @@ Source-dives performed 2026-08-28 (repos: 0xNyk/llmquota, AmirTlinov/Limits, ste
 ## Competitive field (for positioning)
 
 CodexBar (Swift menu bar, ~90 providers), Limits (Swift menu bar, Codex+Claude), ccseva (Swift menu bar, Claude), llmquota (TUI), ccusage (CLI statusline), caut (Rust CLI), assorted Python tray/TUI tools. Nobody does an edge-docked ambient pill with overlap-aware shim. That's our lane.
+
+
+## Oh My Pi (omp) — verified live 2026-08-28
+
+npm `@oh-my-pi/pi-coding-agent` (bun runtime), config root `~/.omp`
+(`PI_CONFIG_DIR` override). Everything Tachyon needs is in SQLite
+`~/.omp/agent/agent.db` (read-only):
+
+- `usage_history(recorded_at, provider, account_key, email, account_id,
+  limit_id, label, window_label, used_fraction, status, resets_at)` — hourly
+  bounded-window snapshots for subscription/OAuth accounts → percent ring.
+  Never read email/account_id.
+- `usage_cost_history(recorded_at, provider, account_key, cost_usd)` — omp
+  computes per-turn cost itself (client-side, model catalog in models.db) →
+  spend meter, no pricing tables on our side.
+- `auth_credentials` — multi-account store; 73 provider registry incl.
+  OpenRouter (validated via openrouter.ai/api/v1/auth/key), locals
+  (ollama/lm-studio/llama.cpp/vllm).
+- No monetary budget setting exists in omp's settings schema.
+- Session JSONLs: `~/.omp/agent/sessions/<encoded-cwd>/<ts>_<uuid>.jsonl`,
+  assistant messages carry `usage.cost.total`; `omp usage --json` and
+  `omp stats --json` exist but spawn bun — SQLite is the cheap path.
+- Spend design shipped: ring = worst bounded window when any exists, else
+  "$X today" spend label (UsageWindow.spendUSD, additive to the protocol).

@@ -50,6 +50,11 @@ struct ProviderSlot: Identifiable, Equatable {
         guard !awaitingFirstSnapshot else { return nil }
         return state.snapshot?.primary.percentUsed
     }
+
+    var ringSpend: Double? {
+        guard !awaitingFirstSnapshot else { return nil }
+        return state.snapshot?.primary.spendUSD
+    }
 }
 
 @MainActor

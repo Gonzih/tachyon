@@ -128,14 +128,14 @@ actor CodexProvider: UsageProvider {
             if let primaryWindow = window(from: nested["primary_window"], fallbackLabel: name) {
                 windows.append(UsageWindow(
                     label: "\(name) · \(primaryWindow.label)",
-                    percentUsed: primaryWindow.percentUsed,
+                    percentUsed: primaryWindow.percentUsed ?? 0,
                     resetsAt: primaryWindow.resetsAt
                 ))
             }
             if let secondaryWindow = window(from: nested["secondary_window"], fallbackLabel: name) {
                 windows.append(UsageWindow(
                     label: "\(name) · \(secondaryWindow.label)",
-                    percentUsed: secondaryWindow.percentUsed,
+                    percentUsed: secondaryWindow.percentUsed ?? 0,
                     resetsAt: secondaryWindow.resetsAt
                 ))
             }

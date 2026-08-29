@@ -2,8 +2,8 @@
 
 # Tachyon
 
-Live rate-limit rings for Claude Code, Codex, Grok and Cursor, docked to the
-edge of your screen. Native macOS, zero config.
+Live rate-limit rings for Claude Code, Codex, Grok, Cursor and Oh My Pi,
+docked to the edge of your screen. Native macOS, zero config.
 
 <p align="center"><img src="assets/tachyon-demo.gif" width="680" alt="Tachyon: shim on the screen edge, mouse in, pill reveals, popovers per provider"></p>
 
@@ -50,8 +50,11 @@ endpoints. Nothing to sign into, nothing to configure.
 | Codex | `chatgpt.com/backend-api/wham/usage` + rollout-log fallback | 60s + on turn completion (FSEvents) |
 | Grok | `cli-chat-proxy.grok.com/v1/billing` + unified-log fallback | 120s |
 | Cursor | `api2.cursor.sh` DashboardService, token from `state.vscdb` (read-only) | 120s |
+| Oh My Pi | `~/.omp/agent/agent.db` (read-only): quota windows + `cost_usd` history | 120s |
 
 Credentials, in order: env override → Keychain → the harness's own auth file.
+Oh My Pi needs none — its own database already carries quota windows and
+per-turn cost, so the ring shows dollars when no bounded window exists.
 The first Claude read triggers one Keychain prompt — choose **Always Allow**
 (the read goes through `/usr/bin/security`, so the approval sticks across
 updates). Tachyon never refreshes anyone's tokens; an expired token shows `!`

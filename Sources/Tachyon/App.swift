@@ -225,7 +225,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func menuTitle(for slot: ProviderSlot) -> String {
         var title = slot.shortName
         if slot.isExperimental { title += " (experimental)" }
-        if let percent = slot.ringPercent {
+        if let spend = slot.ringSpend {
+            title += " — \(UsageWindow.formatSpend(spend))"
+        } else if let percent = slot.ringPercent {
             title += " — \(Int(percent.rounded()))%"
             if slot.state.isStale { title += " (stale)" }
         } else if let guidance = slot.state.authGuidance {
