@@ -72,38 +72,83 @@ Honesty rules: `resetsAt` only for provider-reported resets; never fabricate.
 
 ## Release process
 
-Releases are cut only when Gonzih says so, at a version he names.
+Releases are cut only when Gonzih says so. If he names a version, use it
+exactly. If he authorizes a release without naming one, inspect the latest
+stable GitHub release, Homebrew cask, and installed receipt, then increment the
+final numeric component (`1.7` → `1.8`), announce it, and proceed without an
+extra confirmation turn. Never infer release authorization from a build task.
 
-1. **Green gate:** `./verify.sh --live` (also enforced by `release.sh`) —
+1. **Version and full release scope:** confirm the version/tag does not exist,
+   both repositories are clean, source `HEAD` equals `origin/main`, and CI is
+   green for that SHA. Audit every unreleased commit—not only the current task:
+   ```sh
+   gh release list --repo Gonzih/tachyon --limit 5
+   git log --reverse --oneline v<previous>..HEAD
+   git diff --name-status v<previous>..HEAD
+   ```
+   Draft the complete user-facing changelog in the active GitKB release task
+   and an ignored `build/release-notes.md`. Keep the two copies identical.
+2. **Green gate:** `./verify.sh --live` (also enforced by `release.sh`) —
    warning-clean build, all tests, cognitive complexity ≤15, clean patch
    whitespace, and a sane live provider smoke run.
-2. **Build, sign, notarize, staple:**
+3. **Build, sign, notarize, staple:**
    ```sh
    ./release.sh <version>          # e.g. ./release.sh 1.5
    ```
+   The version argument is mandatory; the script rejects malformed versions
+   and dirty worktrees before doing expensive work.
    Signing uses the team's **cloud-managed Developer ID certificate**
    (Wild Honey on the Porch, LLC — team `UQB3368A84`). Apple holds the key;
    plain `codesign` cannot use it, so the script fabricates an `.xcarchive`
    around the SwiftPM bundle and signs through `xcodebuild -exportArchive`.
    Notarization uses keychain profile `tachyon-notary` (`notarytool --wait`;
    Apple takes 2–60+ min). Output: `build/Tachyon-<version>.zip`, stapled.
-3. **Publish:**
+4. **Verify the exact artifact before publishing:** unpack the zip into a
+   `mktemp -d` directory, then check its version, signature, Gatekeeper result,
+   and staple. Record its SHA-256 and byte size in the GitKB task.
+   ```sh
+   shasum -a 256 build/Tachyon-<version>.zip
+   plutil -extract CFBundleShortVersionString raw <unpacked>/Tachyon.app/Contents/Info.plist
+   codesign --verify --deep --strict --verbose=2 <unpacked>/Tachyon.app
+   spctl -a -vv --type exec <unpacked>/Tachyon.app
+   xcrun stapler validate <unpacked>/Tachyon.app
+   ```
+5. **Publish:**
    ```sh
    gh release create v<version> build/Tachyon-<version>.zip \
-     --repo Gonzih/tachyon --title "Tachyon <version>" --notes "<notes>"
+     --repo Gonzih/tachyon --target <release-commit> \
+     --title "Tachyon <version>" --notes-file build/release-notes.md
    ```
-4. **Cask** in `~/mydev/homebrew-tap/Casks/tachyon.rb`: bump `version`, swap
-   `sha256` (`shasum -a 256 build/Tachyon-<version>.zip`), commit, push.
-5. **Verify the real user path:**
+   Verify the published asset name, size, and server-reported digest with
+   `gh release view v<version> --json assets`, and reread the published notes.
+6. **Cask** in `~/mydev/homebrew-tap/Casks/tachyon.rb`: fetch first and require
+   a clean, non-diverged `main`; bump `version`, swap in the artifact SHA-256,
+   run `brew style Casks/tachyon.rb`, commit, and push. Then `brew update` and
+   run `brew audit --cask --strict gonzih/tap/tachyon` against the published
+   cask. Confirm the tap's local and remote commit hashes match.
+7. **Verify the real user path:** use `brew list --cask --versions tachyon` as
+   the installed-receipt check. Upgrade when installed; otherwise install the
+   fully qualified cask. Kill before opening—`open` alone reuses an old process.
    ```sh
-   pkill -9 -x Tachyon; brew update && brew upgrade --cask tachyon
+   brew list --cask --versions tachyon
+   pkill -9 -x Tachyon
+   brew update && brew upgrade --cask tachyon
    open /Applications/Tachyon.app
    plutil -extract CFBundleShortVersionString raw /Applications/Tachyon.app/Contents/Info.plist
-   spctl -a -vv --type exec /Applications/Tachyon.app   # expect: accepted, Notarized Developer ID
+   codesign --verify --deep --strict --verbose=2 /Applications/Tachyon.app
+   spctl -a -vv --type exec /Applications/Tachyon.app
+   xcrun stapler validate /Applications/Tachyon.app
+   ps -axo pid,lstart,command | awk '/[\/]Applications\/Tachyon\.app\/Contents\/MacOS\/Tachyon$/ {print}'
    ```
-6. The website's download button points at `releases/latest` — no site change
-   per release. If providers changed, update the site's works-with line/demo
-   and README table, and `wrangler deploy`.
+   Expect the named version, a Homebrew receipt at that version, `accepted`,
+   `source=Notarized Developer ID`, a valid staple, and the running executable
+   under `/Applications` rather than `build/`. Record manual feedback too.
+8. The website's download button points at `releases/latest` — no site change
+   per release. A file under `Providers/` does not by itself require deployment:
+   compare the public provider roster/demo across the full release range. When
+   that public surface changes, update README/site content together and deploy
+   only when Gonzih's instruction includes the site. Direct session
+   instructions to skip deployment win.
 
 ## Hard rules
 

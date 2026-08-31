@@ -7,13 +7,29 @@
 # `xcodebuild -exportArchive` against a fabricated .xcarchive; notarization
 # goes through notarytool with the "tachyon-notary" keychain profile.
 #
-#   ./release.sh [version]        e.g. ./release.sh 1.0
+#   ./release.sh <version>        e.g. ./release.sh 1.9
 #
 # Output: build/Tachyon-<version>.zip — signed, notarized, stapled.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION="${1:-1.0}"
+if [ "$#" -ne 1 ]; then
+    echo "Usage: ./release.sh <version> (for example: ./release.sh 1.9)" >&2
+    exit 64
+fi
+
+VERSION="$1"
+if [[ ! "$VERSION" =~ ^[0-9]+([.][0-9]+){1,2}$ ]]; then
+    echo "Invalid release version '$VERSION'; use N.N or N.N.N without a v prefix" >&2
+    exit 64
+fi
+
+if [ -n "$(git status --porcelain)" ]; then
+    echo "Refusing to release from a dirty worktree:" >&2
+    git status --short >&2
+    exit 1
+fi
+
 TEAM_ID="UQB3368A84"
 
 # Refuse to sign or notarize anything that has not passed the exact same
@@ -72,11 +88,21 @@ STAGED="$WORK/export"
 ditto -c -k --keepParent "$STAGED/Tachyon.app" "$WORK/notarize.zip"
 xcrun notarytool submit "$WORK/notarize.zip" --keychain-profile tachyon-notary --wait
 xcrun stapler staple "$STAGED/Tachyon.app"
+xcrun stapler validate "$STAGED/Tachyon.app"
 
+codesign --verify --deep --strict --verbose=2 "$STAGED/Tachyon.app"
 spctl -a -vv --type exec "$STAGED/Tachyon.app"
+
+BUNDLE_VERSION="$(plutil -extract CFBundleShortVersionString raw "$STAGED/Tachyon.app/Contents/Info.plist")"
+if [ "$BUNDLE_VERSION" != "$VERSION" ]; then
+    echo "Signed bundle version mismatch: expected $VERSION, found $BUNDLE_VERSION" >&2
+    exit 1
+fi
 
 # 5. Emit the release artifact.
 OUT="build/Tachyon-${VERSION}.zip"
 rm -f "$OUT"
 ditto -c -k --keepParent "$STAGED/Tachyon.app" "$OUT"
 echo "Release artifact: $OUT"
+shasum -a 256 "$OUT"
+stat -f "Artifact bytes: %z" "$OUT"
