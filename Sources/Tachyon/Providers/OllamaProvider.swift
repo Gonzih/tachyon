@@ -19,7 +19,16 @@ actor OllamaProvider: UsageProvider {
     /// The daemon appends a line per request; the watcher makes the ring
     /// tick within seconds of activity.
     nonisolated var watchPaths: [String] {
-        Self.logPaths.filter(Usage.fileExists).map { (($0 as NSString).deletingLastPathComponent) }
+        let directories = Self.logPaths
+            .map { ($0 as NSString).deletingLastPathComponent }
+            .filter(Usage.fileExists)
+        return Array(Set(directories)).sorted()
+    }
+
+    /// Log directories are shared (especially Homebrew's var/log), so reject
+    /// events for unrelated files before the model schedules a fresh parse.
+    nonisolated func shouldRefresh(changedPaths: [String]) -> Bool {
+        Self.changesAffectLogs(changedPaths, logPaths: Self.logPaths)
     }
 
     /// Homebrew service and the Ollama.app both have known log homes.
@@ -27,6 +36,7 @@ actor OllamaProvider: UsageProvider {
         [
             Usage.env("OLLAMA_LOG_PATH"),
             "/opt/homebrew/var/log/ollama.log",
+            "/usr/local/var/log/ollama.log",
             Usage.homePath(".ollama/logs/server.log"),
         ].compactMap { $0 }
     }
@@ -36,8 +46,15 @@ actor OllamaProvider: UsageProvider {
     // MARK: - Presence
 
     func detect() async -> ProviderPresence {
-        guard Usage.fileExists(Usage.homePath(".ollama")) else { return .notInstalled }
-        guard Self.logPaths.contains(where: Usage.fileExists) else {
+        let activeLog = Self.newestExistingLogPath(in: Self.logPaths)
+        let installed = activeLog != nil
+            || Usage.fileExists(Usage.homePath(".ollama"))
+            || Usage.fileExists("/Applications/Ollama.app")
+            || Usage.fileExists(Usage.homePath("Applications/Ollama.app"))
+            || Usage.fileExists("/opt/homebrew/bin/ollama")
+            || Usage.fileExists("/usr/local/bin/ollama")
+        guard installed else { return .notInstalled }
+        guard activeLog != nil else {
             return .notSignedIn("Start the Ollama server to begin counting")
         }
         return .ready
@@ -46,7 +63,7 @@ actor OllamaProvider: UsageProvider {
     // MARK: - Snapshot
 
     func snapshot() async -> ProviderState {
-        guard let path = Self.logPaths.first(where: Usage.fileExists) else {
+        guard let path = Self.newestExistingLogPath(in: Self.logPaths) else {
             return .unavailable
         }
         let lines = Usage.tailLines(path: path, byteCount: Self.tailBytes)
@@ -59,8 +76,42 @@ actor OllamaProvider: UsageProvider {
             primary: hour,
             windows: [hour, today],
             asOf: Date(),
-            detail: "local + cloud via daemon"
+            detail: "daemon activity · local/cloud not distinguishable"
         ))
+    }
+
+    /// Selects the log the daemon touched most recently instead of silently
+    /// preferring an old environment or Homebrew path by array order.
+    static func newestExistingLogPath(
+        in paths: [String],
+        fileManager: FileManager = .default
+    ) -> String? {
+        var newest: (path: String, modifiedAt: Date)?
+        for path in paths {
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue else { continue }
+            let attributes = try? fileManager.attributesOfItem(atPath: path)
+            let modifiedAt = attributes?[.modificationDate] as? Date ?? .distantPast
+            if let current = newest, modifiedAt <= current.modifiedAt {
+                continue
+            } else {
+                newest = (path, modifiedAt)
+            }
+        }
+        return newest?.path
+    }
+
+    static func changesAffectLogs(_ changedPaths: [String], logPaths: [String]) -> Bool {
+        let logs = Set(logPaths.map(standardizedPath))
+        let directories = Set(logs.map { ($0 as NSString).deletingLastPathComponent })
+        return changedPaths.lazy.map(standardizedPath).contains {
+            logs.contains($0) || directories.contains($0)
+        }
+    }
+
+    private static func standardizedPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
     }
 
     // MARK: - Log parsing
@@ -79,6 +130,8 @@ actor OllamaProvider: UsageProvider {
         let calendar = Calendar.current
         let hourAgo = now.addingTimeInterval(-3600)
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy/MM/dd - HH:mm:ss"
         formatter.timeZone = .current
 
@@ -93,10 +146,10 @@ actor OllamaProvider: UsageProvider {
             let stamp = fields[0]
                 .replacingOccurrences(of: "[GIN]", with: "")
                 .trimmingCharacters(in: .whitespaces)
-            guard let date = formatter.date(from: stamp) else { continue }
+            guard let date = formatter.date(from: stamp), date <= now else { continue }
 
             if calendar.isDate(date, inSameDayAs: now) { counts.today += 1 }
-            if date >= hourAgo && date <= now { counts.pastHour += 1 }
+            if date >= hourAgo { counts.pastHour += 1 }
         }
         return counts
     }

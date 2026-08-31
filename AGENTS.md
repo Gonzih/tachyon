@@ -43,11 +43,14 @@ merges them.
 ## Everyday loop
 
 ```sh
-swift build                     # must be clean — errors AND warnings
-swift test                     # 27+ tests, must pass
-swift run Tachyon --smoke       # headless provider check against live creds
+./verify.sh                     # warning-clean build + tests + cognitive lint
+./verify.sh --live              # same gate + provider check against live creds
 ./build.sh                      # ad-hoc bundle at build/Tachyon.app
 ```
+
+`verify.sh` is the one deterministic gate used locally and in CI. Its
+complexity step is intentionally exact:
+`swift-complexity Sources --cognitive-only --threshold 15 --recursive`.
 
 Restart the dev app: `pkill -9 -x Tachyon; sleep 1; open build/Tachyon.app`.
 `open` alone does NOT restart a running app — kill first, verify with `pgrep`
@@ -70,7 +73,9 @@ Honesty rules: `resetsAt` only for provider-reported resets; never fabricate.
 
 Releases are cut only when Gonzih says so, at a version he names.
 
-1. **Green gate:** `swift build` clean, `swift test` passing, `--smoke` sane.
+1. **Green gate:** `./verify.sh --live` (also enforced by `release.sh`) —
+   warning-clean build, all tests, cognitive complexity ≤15, clean patch
+   whitespace, and a sane live provider smoke run.
 2. **Build, sign, notarize, staple:**
    ```sh
    ./release.sh <version>          # e.g. ./release.sh 1.5

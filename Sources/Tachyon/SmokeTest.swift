@@ -41,7 +41,7 @@ enum SmokeTest {
             let state = await provider.snapshot()
             switch state {
             case .ok(let snapshot), .stale(let snapshot, _):
-                let freshness = state.isStale ? "stale" : "live"
+                let freshness = state.isStale ? "stale" : "current"
                 print("  state: \(freshness), \(snapshot.windows.count) window(s)")
                 print("  ring: \(snapshot.primary.label) — \(meterText(snapshot.primary))")
                 for window in snapshot.windows {

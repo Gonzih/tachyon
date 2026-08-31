@@ -53,95 +53,246 @@ enum ProviderGlyph: String, Sendable, CaseIterable {
 /// relative, with implicit command repetition). Enough for the embedded marks;
 /// contributors adding a provider glyph get it for free.
 enum SVGPath {
-    static func parse(_ data: String) -> Path {
+    private struct ParserState {
         var path = Path()
-        var scanner = Tokenizer(data)
-        var command: Character = " "
         var current = CGPoint.zero
         var subpathStart = CGPoint.zero
         var lastControl: CGPoint?
         var lastQuadControl: CGPoint?
 
-        while let next = scanner.nextCommandOrNumberStart() {
-            if next.isLetter {
-                command = next
-                scanner.advance()
-            } else if command == "M" {
-                command = "L" // implicit repeat after moveto
-            } else if command == "m" {
-                command = "l"
-            }
-            let isRelative = command.isLowercase
-            let origin = isRelative ? current : .zero
+        mutating func resetControls() {
+            lastControl = nil
+            lastQuadControl = nil
+        }
+    }
 
-            switch Character(command.uppercased()) {
-            case "M":
-                guard let point = scanner.point() else { return path }
-                current = CGPoint(x: origin.x + point.x, y: origin.y + point.y)
-                subpathStart = current
-                path.move(to: current)
-                lastControl = nil; lastQuadControl = nil
-            case "L":
-                guard let point = scanner.point() else { return path }
-                current = CGPoint(x: origin.x + point.x, y: origin.y + point.y)
-                path.addLine(to: current)
-                lastControl = nil; lastQuadControl = nil
-            case "H":
-                guard let x = scanner.number() else { return path }
-                current = CGPoint(x: (isRelative ? current.x : 0) + x, y: current.y)
-                path.addLine(to: current)
-                lastControl = nil; lastQuadControl = nil
-            case "V":
-                guard let y = scanner.number() else { return path }
-                current = CGPoint(x: current.x, y: (isRelative ? current.y : 0) + y)
-                path.addLine(to: current)
-                lastControl = nil; lastQuadControl = nil
-            case "C":
-                guard let c1 = scanner.point(), let c2 = scanner.point(), let end = scanner.point() else { return path }
-                let p1 = CGPoint(x: origin.x + c1.x, y: origin.y + c1.y)
-                let p2 = CGPoint(x: origin.x + c2.x, y: origin.y + c2.y)
-                current = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
-                path.addCurve(to: current, control1: p1, control2: p2)
-                lastControl = p2; lastQuadControl = nil
-            case "S":
-                guard let c2 = scanner.point(), let end = scanner.point() else { return path }
-                let p1 = lastControl.map { CGPoint(x: 2 * current.x - $0.x, y: 2 * current.y - $0.y) } ?? current
-                let p2 = CGPoint(x: origin.x + c2.x, y: origin.y + c2.y)
-                current = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
-                path.addCurve(to: current, control1: p1, control2: p2)
-                lastControl = p2; lastQuadControl = nil
-            case "Q":
-                guard let c1 = scanner.point(), let end = scanner.point() else { return path }
-                let control = CGPoint(x: origin.x + c1.x, y: origin.y + c1.y)
-                current = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
-                path.addQuadCurve(to: current, control: control)
-                lastQuadControl = control; lastControl = nil
-            case "T":
-                guard let end = scanner.point() else { return path }
-                let control = lastQuadControl.map { CGPoint(x: 2 * current.x - $0.x, y: 2 * current.y - $0.y) } ?? current
-                current = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
-                path.addQuadCurve(to: current, control: control)
-                lastQuadControl = control; lastControl = nil
-            case "A":
-                guard let rx = scanner.number(), let ry = scanner.number(),
-                      let rotation = scanner.number(),
-                      let largeArc = scanner.flag(), let sweep = scanner.flag(),
-                      let end = scanner.point() else { return path }
-                let target = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
-                addArc(to: &path, from: current, to: target,
-                       rx: rx, ry: ry, rotationDegrees: rotation,
-                       largeArc: largeArc, sweep: sweep)
-                current = target
-                lastControl = nil; lastQuadControl = nil
-            case "Z":
-                path.closeSubpath()
-                current = subpathStart
-                lastControl = nil; lastQuadControl = nil
-            default:
-                return path
+    static func parse(_ data: String) -> Path {
+        var scanner = Tokenizer(data)
+        var command: Character = " "
+        var state = ParserState()
+
+        while let next = scanner.nextCommandOrNumberStart() {
+            command = resolvedCommand(next, previous: command, scanner: &scanner)
+            guard apply(command, scanner: &scanner, state: &state) else {
+                return state.path
             }
         }
-        return path
+        return state.path
+    }
+
+    private static func resolvedCommand(
+        _ next: Character,
+        previous: Character,
+        scanner: inout Tokenizer
+    ) -> Character {
+        if next.isLetter {
+            scanner.advance()
+            return next
+        }
+        if previous == "M" { return "L" } // implicit repeat after moveto
+        if previous == "m" { return "l" }
+        return previous
+    }
+
+    private static func apply(
+        _ command: Character,
+        scanner: inout Tokenizer,
+        state: inout ParserState
+    ) -> Bool {
+        let normalized = Character(command.uppercased())
+        let origin = command.isLowercase ? state.current : .zero
+        switch normalized {
+        case "M", "L", "H", "V", "Z":
+            return applyStraightCommand(
+                normalized, origin: origin, scanner: &scanner, state: &state)
+        case "C", "S", "Q", "T":
+            return applyCurveCommand(
+                normalized, origin: origin, scanner: &scanner, state: &state)
+        case "A":
+            return applyArcCommand(origin: origin, scanner: &scanner, state: &state)
+        default:
+            return false
+        }
+    }
+
+    private static func applyStraightCommand(
+        _ command: Character,
+        origin: CGPoint,
+        scanner: inout Tokenizer,
+        state: inout ParserState
+    ) -> Bool {
+        switch command {
+        case "M":
+            guard let point = scanner.point() else { return false }
+            state.current = CGPoint(x: origin.x + point.x, y: origin.y + point.y)
+            state.subpathStart = state.current
+            state.path.move(to: state.current)
+        case "L":
+            guard let point = scanner.point() else { return false }
+            state.current = CGPoint(x: origin.x + point.x, y: origin.y + point.y)
+            state.path.addLine(to: state.current)
+        case "H":
+            guard let x = scanner.number() else { return false }
+            state.current = CGPoint(x: origin.x + x, y: state.current.y)
+            state.path.addLine(to: state.current)
+        case "V":
+            guard let y = scanner.number() else { return false }
+            state.current = CGPoint(x: state.current.x, y: origin.y + y)
+            state.path.addLine(to: state.current)
+        case "Z":
+            state.path.closeSubpath()
+            state.current = state.subpathStart
+        default:
+            return false
+        }
+        state.resetControls()
+        return true
+    }
+
+    private static func applyCurveCommand(
+        _ command: Character,
+        origin: CGPoint,
+        scanner: inout Tokenizer,
+        state: inout ParserState
+    ) -> Bool {
+        switch command {
+        case "C":
+            guard let control1 = scanner.point(),
+                  let control2 = scanner.point(),
+                  let end = scanner.point() else { return false }
+            let point1 = CGPoint(x: origin.x + control1.x, y: origin.y + control1.y)
+            let point2 = CGPoint(x: origin.x + control2.x, y: origin.y + control2.y)
+            state.current = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
+            state.path.addCurve(to: state.current, control1: point1, control2: point2)
+            state.lastControl = point2
+            state.lastQuadControl = nil
+        case "S":
+            guard let control2 = scanner.point(), let end = scanner.point() else {
+                return false
+            }
+            let point1 = state.lastControl.map {
+                CGPoint(x: 2 * state.current.x - $0.x, y: 2 * state.current.y - $0.y)
+            } ?? state.current
+            let point2 = CGPoint(x: origin.x + control2.x, y: origin.y + control2.y)
+            state.current = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
+            state.path.addCurve(to: state.current, control1: point1, control2: point2)
+            state.lastControl = point2
+            state.lastQuadControl = nil
+        case "Q":
+            guard let first = scanner.point(), let end = scanner.point() else { return false }
+            let control = CGPoint(x: origin.x + first.x, y: origin.y + first.y)
+            state.current = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
+            state.path.addQuadCurve(to: state.current, control: control)
+            state.lastQuadControl = control
+            state.lastControl = nil
+        case "T":
+            guard let end = scanner.point() else { return false }
+            let control = state.lastQuadControl.map {
+                CGPoint(x: 2 * state.current.x - $0.x, y: 2 * state.current.y - $0.y)
+            } ?? state.current
+            state.current = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
+            state.path.addQuadCurve(to: state.current, control: control)
+            state.lastQuadControl = control
+            state.lastControl = nil
+        default:
+            return false
+        }
+        return true
+    }
+
+    private static func applyArcCommand(
+        origin: CGPoint,
+        scanner: inout Tokenizer,
+        state: inout ParserState
+    ) -> Bool {
+        guard let radiusX = scanner.number(), let radiusY = scanner.number(),
+              let rotation = scanner.number(),
+              let largeArc = scanner.flag(), let sweep = scanner.flag(),
+              let end = scanner.point() else { return false }
+        let target = CGPoint(x: origin.x + end.x, y: origin.y + end.y)
+        addArc(
+            to: &state.path,
+            from: state.current,
+            to: target,
+            rx: radiusX,
+            ry: radiusY,
+            rotationDegrees: rotation,
+            largeArc: largeArc,
+            sweep: sweep
+        )
+        state.current = target
+        state.resetControls()
+        return true
+    }
+
+    private struct ArcGeometry {
+        let center: CGPoint
+        let radiusX: CGFloat
+        let radiusY: CGFloat
+        let cosRotation: CGFloat
+        let sinRotation: CGFloat
+
+        func point(cosine: CGFloat, sine: CGFloat) -> CGPoint {
+            CGPoint(
+                x: center.x + radiusX * cosRotation * cosine
+                    - radiusY * sinRotation * sine,
+                y: center.y + radiusX * sinRotation * cosine
+                    + radiusY * cosRotation * sine
+            )
+        }
+
+        func derivative(cosine: CGFloat, sine: CGFloat) -> CGPoint {
+            CGPoint(
+                x: -radiusX * cosRotation * sine - radiusY * sinRotation * cosine,
+                y: -radiusX * sinRotation * sine + radiusY * cosRotation * cosine
+            )
+        }
+    }
+
+    private static func signedAngle(
+        _ ux: CGFloat,
+        _ uy: CGFloat,
+        _ vx: CGFloat,
+        _ vy: CGFloat
+    ) -> CGFloat {
+        let dot = ux * vx + uy * vy
+        let length = sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))
+        var result = acos(min(1, max(-1, dot / length)))
+        if ux * vy - uy * vx < 0 { result = -result }
+        return result
+    }
+
+    private static func appendArcSegments(
+        to path: inout Path,
+        geometry: ArcGeometry,
+        startAngle: CGFloat,
+        delta: CGFloat
+    ) {
+        let segments = max(1, Int(ceil(abs(delta) / (.pi / 2))))
+        let step = delta / CGFloat(segments)
+        let alpha = 4 / 3 * tan(step / 4)
+        var theta = startAngle
+        for _ in 0..<segments {
+            let cosine1 = cos(theta)
+            let sine1 = sin(theta)
+            let theta2 = theta + step
+            let cosine2 = cos(theta2)
+            let sine2 = sin(theta2)
+            let point1 = geometry.point(cosine: cosine1, sine: sine1)
+            let point2 = geometry.point(cosine: cosine2, sine: sine2)
+            let derivative1 = geometry.derivative(cosine: cosine1, sine: sine1)
+            let derivative2 = geometry.derivative(cosine: cosine2, sine: sine2)
+            let control1 = CGPoint(
+                x: point1.x + alpha * derivative1.x,
+                y: point1.y + alpha * derivative1.y
+            )
+            let control2 = CGPoint(
+                x: point2.x - alpha * derivative2.x,
+                y: point2.y - alpha * derivative2.y
+            )
+            path.addCurve(to: point2, control1: control1, control2: control2)
+            theta = theta2
+        }
     }
 
     /// Endpoint-parameterized elliptical arc → cubic Bézier segments
@@ -164,67 +315,90 @@ enum SVGPath {
         let y1p = -sinPhi * dx2 + cosPhi * dy2
 
         // Scale radii up if the endpoints cannot be joined at this size.
-        let lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry)
+        let x1pSquared = x1p * x1p
+        let y1pSquared = y1p * y1p
+        var rxSquared = rx * rx
+        var rySquared = ry * ry
+        let lambda = x1pSquared / rxSquared + y1pSquared / rySquared
         if lambda > 1 {
             let scale = sqrt(lambda)
             rx *= scale; ry *= scale
+            rxSquared = rx * rx
+            rySquared = ry * ry
         }
 
         let sign: CGFloat = largeArc != sweep ? 1 : -1
-        let num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p
-        let den = rx * rx * y1p * y1p + ry * ry * x1p * x1p
+        let xTerm = rxSquared * y1pSquared
+        let yTerm = rySquared * x1pSquared
+        let num = rxSquared * rySquared - xTerm - yTerm
+        let den = xTerm + yTerm
         let coefficient = sign * sqrt(max(0, num / den))
         let cxp = coefficient * (rx * y1p / ry)
         let cyp = coefficient * (-ry * x1p / rx)
         let cx = cosPhi * cxp - sinPhi * cyp + (start.x + end.x) / 2
         let cy = sinPhi * cxp + cosPhi * cyp + (start.y + end.y) / 2
 
-        func angle(_ ux: CGFloat, _ uy: CGFloat, _ vx: CGFloat, _ vy: CGFloat) -> CGFloat {
-            let dot = ux * vx + uy * vy
-            let len = sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))
-            var a = acos(min(1, max(-1, dot / len)))
-            if ux * vy - uy * vx < 0 { a = -a }
-            return a
-        }
-        let startAngle = angle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry)
-        var delta = angle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry)
+        let startUnitX = (x1p - cxp) / rx
+        let startUnitY = (y1p - cyp) / ry
+        let endUnitX = (-x1p - cxp) / rx
+        let endUnitY = (-y1p - cyp) / ry
+        let startAngle = signedAngle(1, 0, startUnitX, startUnitY)
+        var delta = signedAngle(startUnitX, startUnitY, endUnitX, endUnitY)
         if !sweep, delta > 0 { delta -= 2 * .pi }
         if sweep, delta < 0 { delta += 2 * .pi }
 
         // Split into ≤90° cubic segments.
-        let segments = max(1, Int(ceil(abs(delta) / (.pi / 2))))
-        let step = delta / CGFloat(segments)
-        let alpha = 4 / 3 * tan(step / 4)
-        var theta = startAngle
-        for _ in 0..<segments {
-            let cos1 = cos(theta), sin1 = sin(theta)
-            let theta2 = theta + step
-            let cos2 = cos(theta2), sin2 = sin(theta2)
-
-            func onEllipse(_ c: CGFloat, _ s: CGFloat) -> CGPoint {
-                CGPoint(
-                    x: cx + rx * cosPhi * c - ry * sinPhi * s,
-                    y: cy + rx * sinPhi * c + ry * cosPhi * s
-                )
-            }
-            func derivative(_ c: CGFloat, _ s: CGFloat) -> CGPoint {
-                CGPoint(
-                    x: -rx * cosPhi * s - ry * sinPhi * c,
-                    y: -rx * sinPhi * s + ry * cosPhi * c
-                )
-            }
-            let p2 = onEllipse(cos2, sin2)
-            let d1 = derivative(cos1, sin1), d2 = derivative(cos2, sin2)
-            let c1 = CGPoint(x: onEllipse(cos1, sin1).x + alpha * d1.x, y: onEllipse(cos1, sin1).y + alpha * d1.y)
-            let c2 = CGPoint(x: p2.x - alpha * d2.x, y: p2.y - alpha * d2.y)
-            path.addCurve(to: p2, control1: c1, control2: c2)
-            theta = theta2
-        }
+        appendArcSegments(
+            to: &path,
+            geometry: ArcGeometry(
+                center: CGPoint(x: cx, y: cy),
+                radiusX: rx,
+                radiusY: ry,
+                cosRotation: cosPhi,
+                sinRotation: sinPhi
+            ),
+            startAngle: startAngle,
+            delta: delta
+        )
     }
 
     /// Character-level tokenizer. Arc flags need special handling (they may be
     /// glued to the following number, e.g. "0 0-.42"), hence `flag()`.
     private struct Tokenizer {
+        private struct NumberLexeme {
+            var text = ""
+            private var seenDot = false
+            private var seenExponent = false
+
+            mutating func consume(_ character: Character) -> Bool {
+                if character.isNumber {
+                    text.append(character)
+                    return true
+                }
+                if character == "." {
+                    guard !seenDot else { return false } // "1.5.5" is two numbers
+                    seenDot = true
+                    text.append(character)
+                    return true
+                }
+                if character == "-" || character == "+" {
+                    guard text.isEmpty || text.last == "e" || text.last == "E" else {
+                        return false
+                    }
+                    text.append(character)
+                    return true
+                }
+                if character == "e" || character == "E" {
+                    guard !seenExponent, !text.isEmpty else { return false }
+                    seenExponent = true
+                    seenDot = true // decimal point not allowed after exponent
+                    text.append(character)
+                    return true
+                }
+                return false
+            }
+        }
+
         private let chars: [Character]
         private var index = 0
 
@@ -246,35 +420,11 @@ enum SVGPath {
 
         mutating func number() -> CGFloat? {
             skipSeparators()
-            var text = ""
-            var seenDot = false
-            var seenExponent = false
-            while index < chars.count {
-                let c = chars[index]
-                if c.isNumber {
-                    text.append(c)
-                } else if c == "." {
-                    if seenDot { break } // "1.5.5" is two numbers
-                    seenDot = true
-                    text.append(c)
-                } else if c == "-" || c == "+" {
-                    // Sign only valid at the start or right after an exponent.
-                    if text.isEmpty || text.last == "e" || text.last == "E" {
-                        text.append(c)
-                    } else {
-                        break
-                    }
-                } else if c == "e" || c == "E" {
-                    if seenExponent || text.isEmpty { break }
-                    seenExponent = true
-                    seenDot = true // decimal point not allowed after exponent
-                    text.append(c)
-                } else {
-                    break
-                }
+            var lexeme = NumberLexeme()
+            while index < chars.count, lexeme.consume(chars[index]) {
                 index += 1
             }
-            return text.isEmpty ? nil : Double(text).map { CGFloat($0) }
+            return lexeme.text.isEmpty ? nil : Double(lexeme.text).map { CGFloat($0) }
         }
 
         /// Arc flag: exactly one '0' or '1' character.

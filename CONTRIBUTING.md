@@ -42,7 +42,9 @@ automatically in the Settings window: `.money` (budgets), `.toggle`,
 `.choice`, and `.secret` — the only correct way to take an API key from the
 user. Secrets are stored in Tachyon's own Keychain item; **never** put a
 credential in UserDefaults, and never print one anywhere (see the hard rule at
-the top). Two more blocks:
+the top). Re-saving the same non-empty secret is intentionally a no-op, so its
+revision and any credential-scoped baseline stay intact. Optional protocol
+blocks:
 
 - **`about`** — one line shown on hover in the menu and in the Settings pane.
   Skip it when the name says everything (Claude, Codex); use it when it
@@ -51,6 +53,17 @@ the top). Two more blocks:
   owns the FSEvents machinery: watching runs only while your provider is
   enabled, `fileChanged` receives the triggering path (invalidate caches
   there), and a fresh `snapshot()` follows automatically. See `CodexProvider`.
+- **`sourceLabel` + `reading()`** — use a source label when one product has
+  independent surfaces such as Code, CLI, and Desktop. Override the
+  default identity-less `reading()` whenever the scheduler must enforce an
+  account boundary. Return the state plus an
+  ephemeral opaque fingerprint derived from the exact credential/session
+  material that produced it. A fingerprint exists only to blank that source's
+  old reading on an account switch; Tachyon never merges sources. Unknown
+  identity stays nil. Never use or display email, and never return a raw
+  identifier.
+- **`shouldRefresh(changedPaths:)`** — reject unrelated FSEvents before parsing
+  when the only watchable path is a shared parent directory.
 
 Tokens, limits, cost, cost ceilings, external APIs — any combination
 works. We can't predict the future; these blocks are meant to be enough that
@@ -68,6 +81,8 @@ when it doesn't.
 protocol UsageProvider: Sendable {
     nonisolated var id: String { get }
     nonisolated var displayName: String { get }
+    nonisolated var shortName: String { get }      // defaulted to displayName
+    nonisolated var sourceLabel: String? { get }   // defaulted to nil
     nonisolated var glyph: ProviderGlyph { get }
     nonisolated var pollInterval: TimeInterval { get }
     nonisolated var isExperimental: Bool { get }   // defaulted to false
@@ -77,12 +92,21 @@ protocol UsageProvider: Sendable {
 
     func detect() async -> ProviderPresence
     func snapshot() async -> ProviderState
+    func reading() async -> ProviderReading        // default: snapshot + nil identity
+    nonisolated func shouldRefresh(changedPaths: [String]) -> Bool // default true
     func fileChanged(_ path: String) async         // defaulted to a no-op
 }
 ```
 
 Two required methods. `detect()` answers *should this harness appear at all*;
 `snapshot()` answers *what are the numbers right now*.
+
+Any source that needs a hard credential/account boundary overrides `reading()`.
+Its `ProviderReading.state`
+and `accountFingerprint` must be one coherent observation; never fetch the
+state, yield to a possible account switch, and then fingerprint a newly loaded
+credential. Check cancellation after awaited credential/file/network work
+before mutating caches or last-good state.
 
 ### Metadata must be stored `let`s
 
@@ -107,8 +131,8 @@ Three outcomes, and the distinction matters to the UI:
 
 | Return | Meaning | UI |
 |---|---|---|
-| `.notInstalled` | No trace of the harness | Invisible everywhere |
-| `.notSignedIn(guidance)` | Harness present, no usable credential | Greyed menu entry showing your guidance |
+| `.notInstalled` | No trace of the harness | No ring or Settings pane; checked, toggleable menu row shows “not installed” |
+| `.notSignedIn(guidance)` | Harness present, no usable credential | No ring; checked, toggleable menu row and Settings show your guidance |
 | `.ready` | Poll me | Gets a ring |
 
 ```swift
@@ -132,10 +156,18 @@ Return one of four states. **Never throw, never crash, never block for long.**
 
 | State | When |
 |---|---|
-| `.ok(snapshot)` | Live numbers |
+| `.ok(snapshot)` | Current numbers from a live response or freshly emitted provider observation |
 | `.stale(snapshot, asOf:)` | Real numbers from a fallback or an older read |
 | `.authError(guidance)` | Authentication specifically — nothing else |
 | `.unavailable` | Everything else: network down, schema drift, missing file |
+
+The model expires unchanged `.stale` data after three provider poll intervals,
+on a local deadline independent of network backoff. Set `asOf` to the real
+source timestamp; never stamp an old record as newly fresh. Once that timestamp
+expires, returning the identical record again stays unavailable instead of
+starting a new grace period. If a current `.ok` reading later becomes
+unavailable, its fallback deadline is likewise anchored to the snapshot's
+`asOf`, not to a delayed failure discovered after sleep.
 
 That last distinction is a rule, not a preference. `.authError` renders a `!`
 badge that tells the user to go run a command; if you return it for a network
@@ -145,13 +177,14 @@ failures, and missing files are all `.unavailable`, which renders `–`.
 ```swift
 func snapshot() async -> ProviderState {
     guard let account = Self.loadAccount() else {
-        if let fallback = Self.logSnapshot() { return .stale(fallback, asOf: fallback.asOf) }
+        if let fallback = Self.logSnapshot() { // decoder enforces a short TTL
+            return .stale(fallback, asOf: fallback.asOf)
+        }
         return .authError(Self.authGuidance)
     }
     do {
         let result = try await Usage.get(Self.billingURL, headers: headers)
         if result.status == 401 || result.status == 403 {
-            if let fallback = Self.logSnapshot() { return .stale(fallback, asOf: fallback.asOf) }
             return .authError(Self.authGuidance)
         }
         if (200..<300).contains(result.status),
@@ -159,15 +192,17 @@ func snapshot() async -> ProviderState {
             return .ok(snapshot)
         }
     } catch {
-        Log.provider.error("grok billing failed: \(error.localizedDescription, privacy: .public)")
+        Log.provider.error("grok billing request failed")
     }
-    if let fallback = Self.logSnapshot() { return .stale(fallback, asOf: fallback.asOf) }
     return .unavailable
 }
 ```
 
-Note the shape: try the live source, fall back to a local one, and only then give
-up. A provider with no fallback simply skips the middle step.
+This example's log records carry no account identifier, so they are short-lived
+signed-out history only. Never attach an unbound file/log fallback to an
+authenticated credential: after an account switch, it may belong to the prior
+login. An authenticated fallback is valid only when it proves the same account
+or is queried with the exact credential that produced the live reading.
 
 ### Building the snapshot
 
@@ -231,9 +266,11 @@ If `elapsed_fraction ≥ 0.1` (earlier projections are wild) and
 `projected_at_reset ≥ 100` — the user runs out before the reset at the current
 burn rate — the color lifts to the next band's floor: green→yellow,
 yellow→orange, orange→red. One band, never more: pace is a warning, not a
-measurement. Pace-hot windows also *pulse* (ring, shim, popover bar) — but an
-already-exhausted window (100%) never does: the pulse means "act now or you'll
-run out", and at the wall there is no decision left, only the wait.
+measurement. Provider-enforced pace-hot windows also *pulse* (ring, shim,
+popover bar). A hard window at 100% stays hot: in a multi-account capacity
+tool, switching to another pool is still an available decision. A
+user-authored spend budget carries `spendUSD`, so it may use percentage colors
+but never pace-escalates, pulses, or says `Limit reached`.
 
 Worked example: a weekly window (`window_duration = 604800`s) that resets in
 3.5 days → `elapsed_fraction = 0.5`. At 38% used, `projected = 76` → no
@@ -242,9 +279,9 @@ shows 55% but wears orange instead of yellow.
 
 **Your only job as a provider author is to pass `windowSeconds`** when you
 know the duration (5h session = `18000`, weekly = `604800`; Codex hands you
-`limit_window_seconds` directly). `UsageWindow.projectedAtReset` and
-`.bandPercent` do the rest — leave `windowSeconds` nil and the window simply
-never pace-escalates.
+`limit_window_seconds` directly). `PacePresentation` centralizes caption,
+band, pulse, and stale suppression for every surface — leave `windowSeconds`
+nil and the window simply never pace-escalates.
 
 ## Step 3 — decoding without brittleness
 
@@ -333,7 +370,9 @@ If it isn't tested, it isn't merged.
 enum ProviderRegistry {
     static let all: [any UsageProvider] = [
         ClaudeProvider(),
+        ClaudeDesktopProvider(),
         CodexProvider(),
+        CodexDesktopProvider(),
         GrokProvider(),
         YourProvider(),   // ← here
     ]
@@ -344,20 +383,19 @@ Rings render in this order.
 
 ## Optional: watching files
 
-If your harness writes a file when usage changes, implement `start()` to get an
-immediate poll instead of waiting out the interval. Codex does this:
+If your harness writes a file when usage changes, declare `watchPaths` to get
+an immediate poll instead of waiting out the interval. Codex does this:
 
 ```swift
-func start(onExternalChange: @escaping @Sendable () -> Void) async {
-    guard watcher == nil else { return }
-    let watcher = FSEventsWatcher(path: Self.sessionsPath, latency: 2.0, onChange: onExternalChange)
-    watcher.start()
-    self.watcher = watcher
-}
+nonisolated var watchPaths: [String] { [Self.sessionsPath, Self.authPath] }
 ```
 
-`start()` is called once by the model after the registry is built — **never do
-this in `init`**, which runs before the app has a run loop.
+The model owns watcher lifecycle, starts it only while enabled, retries paths
+that do not exist yet, coalesces duplicate burst paths, and finishes all
+accepted `fileChanged` invalidations before firing one fresh snapshot signal.
+Watcher work is canceled and detached from model lifetime on disable/stop.
+Override `fileChanged` when your provider has cached state to invalidate. Do
+not create an FSEvents stream in your provider or in `init`.
 
 `FSEventsWatcher` already handles the awkward parts: the C callback bridge, the
 dispatch queue, and `kFSEventStreamCreateFlagFileEvents`, which is mandatory
@@ -366,9 +404,10 @@ when the files you care about are nested below the watched directory. A plain
 
 ### Tailing large logs
 
-Use `Usage.tailLines(path:byteCount:)`. It reads only the final N bytes, discards
-the inevitably-partial first line, and hands back complete lines. Scan them in
-reverse for the newest usable record:
+Use `Usage.tailLines(path:byteCount:)`. It reads only the requested final bytes
+(hard maximum 16MiB), preserves the first line when the tail starts on a record
+boundary, otherwise discards that partial line, and hands back complete lines.
+Scan them in reverse for the newest usable record:
 
 ```swift
 let lines = Usage.tailLines(path: path, byteCount: 256 * 1024)
@@ -378,17 +417,28 @@ for line in lines.reversed() {
 }
 ```
 
+For small config or credential files, use
+`Usage.boundedFile(path:maximumBytes:)`; never call an unbounded whole-file read
+on a provider-controlled path. Shared HTTP helpers also reject malformed,
+non-ASCII, control-bearing, or oversized header fields before a request starts,
+stream response bodies into a strict 4MiB cap, and cancel oversized transfers.
+
 The `contains` check before parsing matters: a 256KB tail is a few thousand
 lines, and JSON-parsing all of them on every poll is waste you can skip.
 
 ## Step 6 — verify
 
 ```sh
-swift build && swift run Tachyon --smoke
+brew install fummicc1/tap/swift-complexity   # once
+./verify.sh --live
 ```
 
-The diagnostic runs every provider once and prints presence, the ring window,
-each popover row with its formatted reset time, and the plan string. Check that:
+The script runs the warning-clean build, full test suite, exact cognitive lint
+(`swift-complexity Sources --cognitive-only --threshold 15 --recursive`), and
+patch-whitespace check before the live diagnostic. CI runs the same script
+without `--live`, because it has no user credentials. The diagnostic runs every
+provider once and prints presence, the ring window, each popover row with its
+formatted reset time, and the plan string. Check that:
 
 - Signed out → `.notSignedIn` with actionable guidance, not a crash
 - Signed in → a plausible ring percentage matching your harness's own `/usage`
@@ -400,8 +450,9 @@ percentages match what your harness reports.
 
 ## House rules
 
-- **No third-party dependencies.** URLSession, Security, CoreServices,
-  ServiceManagement. That is the whole toolbox.
+- **No third-party dependencies.** Use Apple/system frameworks and libraries
+  already linked by the project (including URLSession, Security, CoreServices,
+  ServiceManagement, SQLite3, CommonCrypto, and CryptoKit).
 - **No force-unwraps on external data.** A server response is not a promise.
 - **`os.Logger` for logging**, subsystem `dev.gonzih.tachyon`. The `Log` enum in
   `Provider.swift` has the categories.
@@ -421,5 +472,5 @@ percentages match what your harness reports.
 ## Deferred provider slots
 
 `kb/RESEARCH.md` records researched-but-unimplemented mechanics for Gemini CLI,
-GitHub Copilot, Cursor, and Hermes/Nous — endpoints, credential locations, and
-the known sharp edges for each. If you want a starting point, start there.
+GitHub Copilot, and Hermes/Nous, plus the evidence behind integrated providers
+such as Cursor. If you want a starting point, start there.

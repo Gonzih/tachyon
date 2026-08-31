@@ -23,7 +23,7 @@ final class ShimPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        collectionBehavior = OverlayPanelPolicy.collectionBehavior
         // The shim is decoration: the 12pt hot zone handles reveal, so the panel
         // itself must never eat clicks meant for the window underneath.
         ignoresMouseEvents = true
@@ -42,10 +42,11 @@ final class ShimPanel: NSPanel {
                 let idle = dark
                     ? NSColor.white.withAlphaComponent(0.25)
                     : NSColor.black.withAlphaComponent(0.22)
-                return ShimView.Segment(color: idle, isPaceHot: false)
+                return ShimView.Segment(color: idle, alpha: 0.6, isPaceHot: false)
             }
             return ShimView.Segment(
                 color: UsageColor.nsBand(percent, darkAppearance: dark),
+                alpha: slot.displaysStale() ? 0.32 : 0.6,
                 isPaceHot: slot.ringIsPaceHot
             )
         }
@@ -72,6 +73,7 @@ final class ShimPanel: NSPanel {
     private final class ShimView: NSView {
         struct Segment {
             let color: NSColor
+            let alpha: CGFloat
             let isPaceHot: Bool
         }
 
@@ -120,7 +122,7 @@ final class ShimPanel: NSPanel {
                     width: bounds.width, height: segmentHeight
                 )
                 segmentLayer.cornerRadius = bounds.width / 2
-                segmentLayer.backgroundColor = segment.color.withAlphaComponent(0.6).cgColor
+                segmentLayer.backgroundColor = segment.color.withAlphaComponent(segment.alpha).cgColor
                 CATransaction.commit()
 
                 if segment.isPaceHot, !reduceMotion {

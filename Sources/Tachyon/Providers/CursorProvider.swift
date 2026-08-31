@@ -22,17 +22,22 @@ actor CursorProvider: UsageProvider {
     private static let usageURL = URL(
         string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage")!
     private static let authGuidance = "Log in to Cursor"
+    static let credentialCacheTTL: TimeInterval = 60
+    private static let maxAuthBytes = 1024 * 1024
 
     struct Credential: Sendable {
         let accessToken: String
-        let email: String?
         let membership: String?
     }
 
-    private var cachedCredential: Credential?
+    private struct CachedCredential: Sendable {
+        let value: Credential
+        let loadedAt: Date
+    }
 
-    /// Kept so a transient failure degrades to `.stale` instead of blanking.
-    private var lastGood: (snapshot: UsageSnapshot, at: Date)?
+    /// Short-lived so an account switch is observed by the next scheduled
+    /// poll while avoiding duplicate SQLite reads during detect + snapshot.
+    private var cachedCredential: CachedCredential?
 
     // MARK: - Paths
 
@@ -64,33 +69,70 @@ actor CursorProvider: UsageProvider {
         guard let credential = credential() else {
             return .authError(Self.authGuidance)
         }
+        return await snapshot(using: credential)
+    }
+
+    func reading() async -> ProviderReading {
+        guard let credential = credential() else {
+            return ProviderReading(
+                state: .authError(Self.authGuidance),
+                accountFingerprint: nil
+            )
+        }
+        let state = await snapshot(using: credential)
+        guard !Task.isCancelled else {
+            return ProviderReading(state: .unavailable, accountFingerprint: nil)
+        }
+        return ProviderReading(
+            state: state,
+            accountFingerprint: Self.credentialFingerprint(
+                accessToken: credential.accessToken,
+                membership: credential.membership
+            )
+        )
+    }
+
+    private func snapshot(using credential: Credential) async -> ProviderState {
         do {
             let result = try await Usage.post(Self.usageURL, headers: [
                 "Authorization": "Bearer \(credential.accessToken)",
                 "Content-Type": "application/json",
                 "Connect-Protocol-Version": "1",
             ], body: Data("{}".utf8))
+            guard !Task.isCancelled else { return .unavailable }
             if result.status == 401 {
                 // Token rotated or revoked; a fresh DB read is the only retry.
-                cachedCredential = nil
+                if cachedCredential?.value.accessToken == credential.accessToken {
+                    cachedCredential = nil
+                }
                 return .authError(Self.authGuidance)
             }
             guard (200..<300).contains(result.status) else {
                 Log.provider.error("cursor usage HTTP \(result.status)")
-                if let last = lastGood { return .stale(last.snapshot, asOf: last.at) }
                 return .unavailable
             }
             guard let snapshot = Self.decode(result.body, credential: credential) else {
                 Log.provider.error("cursor usage decode produced no usable window")
                 return .unavailable
             }
-            lastGood = (snapshot, Date())
             return .ok(snapshot)
         } catch {
-            Log.provider.error("cursor usage request failed: \(error.localizedDescription, privacy: .public)")
-            if let last = lastGood { return .stale(last.snapshot, asOf: last.at) }
+            Log.provider.error("cursor usage request failed")
             return .unavailable
         }
+    }
+
+    static func credentialFingerprint(accessToken: String, membership: String?) -> String? {
+        guard !accessToken.isEmpty else { return nil }
+        var components = [accessToken]
+        if let membership = membership?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !membership.isEmpty {
+            components.append(membership)
+        }
+        return OpaqueAccountIdentity.fingerprint(
+            namespace: "cursor-credential",
+            components: components
+        )
     }
 
     // MARK: - Decoding
@@ -102,17 +144,34 @@ actor CursorProvider: UsageProvider {
         let plan = root["planUsage"]
 
         guard let total = plan["totalPercentUsed"].double else { return nil }
-        let cycleEnd = root["billingCycleEnd"].isoDate ?? root["billingCycleEnd"].epochDate
+        let cycleStart = periodDate(root["billingCycleStart"])
+        let cycleEnd = periodDate(root["billingCycleEnd"])
+        let cycleSeconds = periodDuration(start: cycleStart, end: cycleEnd)
 
-        let primary = UsageWindow(label: "Billing cycle", percentUsed: total, resetsAt: cycleEnd)
+        let primary = UsageWindow(
+            label: "Billing cycle",
+            percentUsed: total,
+            resetsAt: cycleEnd,
+            windowSeconds: cycleSeconds
+        )
         var windows = [primary]
 
         // Sub-meters only when they carry real usage — same noise rule as Codex.
         if let auto = plan["autoPercentUsed"].double, auto >= 1 {
-            windows.append(UsageWindow(label: "Auto", percentUsed: auto, resetsAt: cycleEnd))
+            windows.append(UsageWindow(
+                label: "Auto",
+                percentUsed: auto,
+                resetsAt: cycleEnd,
+                windowSeconds: cycleSeconds
+            ))
         }
         if let api = plan["apiPercentUsed"].double, api >= 1 {
-            windows.append(UsageWindow(label: "API", percentUsed: api, resetsAt: cycleEnd))
+            windows.append(UsageWindow(
+                label: "API",
+                percentUsed: api,
+                resetsAt: cycleEnd,
+                windowSeconds: cycleSeconds
+            ))
         }
         let spend = root["spendLimitUsage"]
         if let used = spend["individualUsed"].double,
@@ -120,7 +179,8 @@ actor CursorProvider: UsageProvider {
             windows.append(UsageWindow(
                 label: "Spend limit",
                 percentUsed: used / limit * 100,
-                resetsAt: cycleEnd
+                resetsAt: cycleEnd,
+                windowSeconds: cycleSeconds
             ))
         }
 
@@ -132,6 +192,25 @@ actor CursorProvider: UsageProvider {
         )
     }
 
+    /// Cursor has emitted ISO strings, epoch seconds, and decimal/string epoch
+    /// milliseconds across clients. Keep this parser local: generic epochDate
+    /// intentionally means seconds and must not silently reinterpret schemas.
+    private static func periodDate(_ value: JSONValue) -> Date? {
+        if let date = value.isoDate { return date }
+        guard let raw = value.double, raw > 0 else { return nil }
+        let maximum = Date.distantFuture.timeIntervalSince1970
+        if raw <= maximum { return Date(timeIntervalSince1970: raw) }
+        let seconds = raw / 1_000
+        guard seconds <= maximum else { return nil }
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    private static func periodDuration(start: Date?, end: Date?) -> TimeInterval? {
+        guard let start, let end else { return nil }
+        let duration = end.timeIntervalSince(start)
+        return duration.isFinite && duration > 0 ? duration : nil
+    }
+
     private static func detailText(credential: Credential?) -> String? {
         guard let membership = credential?.membership, !membership.isEmpty else { return nil }
         return membership.prefix(1).uppercased() + membership.dropFirst()
@@ -139,26 +218,38 @@ actor CursorProvider: UsageProvider {
 
     // MARK: - Credential chain
 
-    private func credential() -> Credential? {
-        if let cached = cachedCredential { return cached }
+    private func credential(now: Date = Date()) -> Credential? {
+        if let cached = cachedCredential,
+           Self.credentialCacheIsFresh(loadedAt: cached.loadedAt, now: now) {
+            return cached.value
+        }
+        // Never keep using a credential after its TTL if the source is now
+        // missing or unreadable.
+        cachedCredential = nil
         if let fromDB = Self.readStateDB() {
-            cachedCredential = fromDB
+            cachedCredential = CachedCredential(value: fromDB, loadedAt: now)
             return fromDB
         }
         for path in Self.cliAuthPaths {
-            guard let data = FileManager.default.contents(atPath: path) else { continue }
+            guard let data = Usage.boundedFile(path: path, maximumBytes: Self.maxAuthBytes) else {
+                continue
+            }
             let json = JSONValue.parse(data)
             if let token = json["accessToken"].string, !token.isEmpty {
                 let parsed = Credential(
                     accessToken: token,
-                    email: json["email"].string,
                     membership: nil
                 )
-                cachedCredential = parsed
+                cachedCredential = CachedCredential(value: parsed, loadedAt: now)
                 return parsed
             }
         }
         return nil
+    }
+
+    static func credentialCacheIsFresh(loadedAt: Date, now: Date) -> Bool {
+        let age = now.timeIntervalSince(loadedAt)
+        return age >= 0 && age < credentialCacheTTL
     }
 
     /// Read-only SQLite read of Cursor's global storage. `immutable=1` is
@@ -199,7 +290,6 @@ actor CursorProvider: UsageProvider {
         guard let token = unquote(value(forKey: "cursorAuth/accessToken")) else { return nil }
         return Credential(
             accessToken: token,
-            email: unquote(value(forKey: "cursorAuth/cachedEmail")),
             membership: unquote(value(forKey: "cursorAuth/stripeMembershipType"))
         )
     }

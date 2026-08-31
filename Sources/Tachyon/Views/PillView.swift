@@ -57,6 +57,26 @@ enum PillMetrics {
     }
 }
 
+/// Builds the spoken ring summary without changing the compact visible label.
+enum RingAccessibility {
+    static func label(
+        name: String,
+        displayedValue: String,
+        count: Int?,
+        countUnit: String?,
+        isStale: Bool
+    ) -> String {
+        let unit = countUnit?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let spokenValue: String
+        if count != nil, let unit, !unit.isEmpty {
+            spokenValue = "\(displayedValue) \(unit)"
+        } else {
+            spokenValue = displayedValue
+        }
+        return "\(name) \(spokenValue) used" + (isStale ? ", stale" : "")
+    }
+}
+
 // MARK: - Pill silhouette
 
 /// The Figma silhouette: flat right side flush to the screen edge, 24pt convex
@@ -135,11 +155,7 @@ struct RingModule: View {
     private var contentOpacity: Double {
         if slot.state.isAuthError { return 0.5 }
         if percent == nil && slot.ringSpend == nil && slot.ringCount == nil { return 0.5 }
-        // A reading one poll old is effectively fresh — dimming it just makes
-        // the ring look sick every time the endpoint throttles once. Only dim
-        // when the data is meaningfully old.
-        if let since = slot.state.staleSince,
-           Date().timeIntervalSince(since) > 10 * 60 { return 0.7 }
+        if slot.displaysStale() { return 0.72 }
         return 1.0
     }
 
@@ -213,7 +229,15 @@ struct RingModule: View {
         .frame(width: PillMetrics.width, height: PillMetrics.moduleHeight)
         .opacity(contentOpacity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(slot.displayName) \(labelText) used")
+        .accessibilityLabel(
+            RingAccessibility.label(
+                name: slot.nameWithSource,
+                displayedValue: labelText,
+                count: slot.ringCount,
+                countUnit: slot.snapshot?.primary.countUnit,
+                isStale: slot.displaysStale()
+            )
+        )
     }
 }
 

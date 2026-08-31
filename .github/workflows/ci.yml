@@ -9,7 +9,7 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Build
-        run: swift build
-      - name: Test
-        run: swift test
+      - name: Install cognitive-complexity gate
+        run: brew install fummicc1/tap/swift-complexity
+      - name: Verify
+        run: ./verify.sh

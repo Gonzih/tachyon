@@ -3,6 +3,28 @@ import AppKit
 import ServiceManagement
 import SwiftUI
 
+enum StatusSummary {
+    /// The menu-bar gauge represents provider-enforced percentage limits only.
+    /// A spend-vs-budget percentage is a useful personal meter, not a hard wall.
+    static func closestHardWallPercent(in windows: [UsageWindow]) -> Double? {
+        windows.compactMap { window in
+            guard window.spendUSD == nil else { return nil }
+            return window.percentUsed
+        }.max()
+    }
+
+    /// The status item has no room for a stale qualifier, so it must not draw
+    /// an old value as if it were current. Stale detail remains available in
+    /// the explicitly labeled pill/menu/popover surfaces.
+    static func closestLiveHardWallPercent(in states: [ProviderState]) -> Double? {
+        let liveWindows = states.flatMap { state -> [UsageWindow] in
+            guard case .ok(let snapshot) = state else { return [] }
+            return snapshot.windows
+        }
+        return closestHardWallPercent(in: liveWindows)
+    }
+}
+
 @main
 enum TachyonMain {
     static func main() {
@@ -44,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        model.stop()
         edge?.stop()
     }
 
@@ -92,24 +115,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.mainMenu = main
     }
 
-    /// The gauge fills with the summary usage across enabled providers.
+    /// The gauge shows the closest verified hard wall. Averaging unrelated
+    /// subscriptions hides the account most likely to block the next task.
     func refreshStatusIcon() {
-        let percents = model.slots
-            .filter { $0.enabled && $0.presence == .ready }
-            .compactMap(\.ringPercent)
-        let summary = percents.isEmpty ? nil : percents.reduce(0, +) / Double(percents.count)
+        let summary = StatusSummary.closestLiveHardWallPercent(
+            in: model.visibleSlots.map(\.state)
+        )
         let dark = statusItem?.button?.effectiveAppearance.isDarkTheme ?? true
         statusItem?.button?.image = Self.statusImage(percent: summary, darkMenuBar: dark)
         if let summary {
-            statusItem?.button?.toolTip = "Tachyon — \(Int(summary.rounded()))% used across enabled tools"
+            statusItem?.button?.toolTip = "Tachyon — closest limit is \(Int(summary.rounded()))% used"
         } else {
             statusItem?.button?.toolTip = "Tachyon"
         }
     }
 
-    /// Monochrome gauge: a thin outline circle that fills like a pie —
-    /// clockwise from 12 o'clock — with the summary usage of the enabled
-    /// providers. Template image; the menu bar tints it for either theme.
+    /// A thin outline circle that fills like a pie, clockwise from 12 o'clock,
+    /// with the closest hard limit among enabled providers. The colored image
+    /// redraws for light and dark menu bars.
     private static func statusImage(percent: Double?, darkMenuBar: Bool) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
@@ -168,34 +191,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        // Every supported harness, in registry order — active ones are
-        // toggleable, inactive ones sit grayed with the reason why.
+        // Every supported source, in registry order. Disabled sources remain
+        // toggleable without touching their credentials or files.
         var lastCategory: ProviderCategory?
         for slot in model.slots {
             if let last = lastCategory, last != slot.category {
                 menu.addItem(.separator())
             }
             lastCategory = slot.category
-            let item: NSMenuItem
-            switch slot.presence {
-            case .notInstalled:
-                item = NSMenuItem(title: "\(slot.shortName) — not installed", action: nil, keyEquivalent: "")
-                item.isEnabled = false
-            case .notSignedIn(let guidance):
-                item = NSMenuItem(title: "\(slot.shortName) — \(guidance)", action: nil, keyEquivalent: "")
-                item.isEnabled = false
-            case .ready:
-                item = NSMenuItem(
-                    title: menuTitle(for: slot),
-                    action: #selector(toggleProvider(_:)),
-                    keyEquivalent: ""
-                )
-                item.target = self
-                item.representedObject = slot.id
-                item.state = slot.enabled ? .on : .off
+            let title: String
+            if slot.enabled {
+                switch slot.presence {
+                case .notInstalled:
+                    title = "\(slot.nameWithSource) — not installed"
+                case .notSignedIn(let guidance):
+                    title = "\(slot.nameWithSource) — \(guidance)"
+                case .ready:
+                    title = menuTitle(for: slot)
+                }
+            } else {
+                title = slot.nameWithSource
             }
+            let item = NSMenuItem(
+                title: title,
+                action: #selector(toggleProvider(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = slot.id
+            item.state = slot.enabled ? .on : .off
             item.image = Self.menuGlyph(slot.glyph)
-            if let about = slot.about { item.toolTip = about }
+            item.toolTip = slot.about ?? (slot.enabled ? nil : "Enable to detect and read this provider")
             menu.addItem(item)
         }
 
@@ -251,16 +277,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func menuTitle(for slot: ProviderSlot) -> String {
-        var title = slot.shortName
+        var title = slot.nameWithSource
         if slot.isExperimental { title += " (experimental)" }
         if let percent = slot.ringPercent {
             title += " — \(Int(percent.rounded()))%"
-            if slot.state.isStale { title += " (stale)" }
+            if slot.displaysStale() { title += " (stale)" }
         } else if let spend = slot.ringSpend {
             title += " — \(UsageWindow.formatSpend(spend))"
-            if slot.state.isStale { title += " (stale)" }
+            if slot.displaysStale() { title += " (stale)" }
         } else if let count = slot.ringCount {
             title += " — \(count)"
+            if let unit = slot.snapshot?.primary.countUnit?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !unit.isEmpty {
+                title += " \(unit)"
+            }
+            if slot.displaysStale() { title += " (stale)" }
         } else if let guidance = slot.state.authGuidance {
             title += " — \(guidance)"
         }
@@ -361,7 +392,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 try service.register()
             }
         } catch {
-            Log.app.error("Launch at login toggle failed: \(error.localizedDescription, privacy: .public)")
+            Log.app.error("Launch at login toggle failed")
             let alert = NSAlert()
             alert.messageText = "Could not change Launch at Login"
             alert.informativeText = error.localizedDescription

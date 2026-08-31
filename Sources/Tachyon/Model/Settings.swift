@@ -6,6 +6,14 @@ import Security
 enum Settings {
     static var defaults: UserDefaults { .standard }
 
+    struct SecretSettingError: LocalizedError, Equatable {
+        let status: OSStatus
+
+        var errorDescription: String? {
+            "Couldn\u{2019}t update the Keychain (error \(status))."
+        }
+    }
+
     private enum Key {
         static let providerEnabledPrefix = "provider.enabled."
         static let displayID = "display.id"
@@ -13,11 +21,18 @@ enum Settings {
 
     // MARK: Per-provider toggles
 
-    static func providerEnabled(_ id: String) -> Bool {
+    /// Nil means this source has never been classified on this installation.
+    /// UsageModel gives it one read-only detection pass, then persists the
+    /// result so later launches preserve a stable source list.
+    static func providerPreference(_ id: String) -> Bool? {
         let key = Key.providerEnabledPrefix + id
-        // Default on: zero-config means new providers light up without a visit to the menu.
-        guard defaults.object(forKey: key) != nil else { return true }
+        guard defaults.object(forKey: key) != nil else { return nil }
         return defaults.bool(forKey: key)
+    }
+
+    static func providerEnabled(_ id: String) -> Bool {
+        // Unseen sources start enabled only long enough for first detection.
+        providerPreference(id) ?? true
     }
 
     // MARK: Secrets (app-owned Keychain item, service "dev.gonzih.tachyon")
@@ -37,18 +52,105 @@ enum Settings {
         return value
     }
 
-    static func setSecretSetting(_ value: String?, suffix: String, provider id: String) {
+    /// Updates an existing item in place, adding only when no item exists.
+    /// Unlike delete-then-add, a failed write leaves the previous secret
+    /// untouched. The result lets Settings surface a failure instead of
+    /// pretending the new credential was saved.
+    @discardableResult
+    static func setSecretSetting(
+        _ value: String?,
+        suffix: String,
+        provider id: String
+    ) -> Result<Void, SecretSettingError> {
         let account = settingKey(suffix, provider: id)
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "dev.gonzih.tachyon",
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(base as CFDictionary)
-        guard let value, !value.isEmpty else { return }
-        var add = base
-        add[kSecValueData as String] = Data(value.utf8)
-        SecItemAdd(add as CFDictionary, nil)
+
+        let result = applySecretMutation(
+            value,
+            currentValue: secretSetting(suffix, provider: id),
+            update: { data in
+                SecItemUpdate(
+                    base as CFDictionary,
+                    [kSecValueData as String: data] as CFDictionary
+                )
+            },
+            add: { data in
+                var item = base
+                item[kSecValueData as String] = data
+                return SecItemAdd(item as CFDictionary, nil)
+            },
+            delete: {
+                SecItemDelete(base as CFDictionary)
+            }
+        )
+
+        switch result {
+        case .success(let changed):
+            if changed { bumpSecretRevision(suffix, provider: id) }
+            return .success(())
+        case .failure(let error):
+            return .failure(error)
+        }
+    }
+
+    /// Status-driven core kept separate so update/add/delete semantics can be
+    /// tested without touching a developer's real Keychain.
+    static func applySecretMutation(
+        _ value: String?,
+        currentValue: String? = nil,
+        update: (Data) -> OSStatus,
+        add: (Data) -> OSStatus,
+        delete: () -> OSStatus
+    ) -> Result<Bool, SecretSettingError> {
+        guard let value, !value.isEmpty else {
+            let status = delete()
+            switch status {
+            case errSecSuccess:
+                return .success(true)
+            case errSecItemNotFound:
+                return .success(false)
+            default:
+                return .failure(SecretSettingError(status: status))
+            }
+        }
+
+        if value == currentValue { return .success(false) }
+
+        let data = Data(value.utf8)
+        let updateStatus = update(data)
+        switch updateStatus {
+        case errSecSuccess:
+            return .success(true)
+        case errSecItemNotFound:
+            let addStatus = add(data)
+            guard addStatus == errSecSuccess else {
+                return .failure(SecretSettingError(status: addStatus))
+            }
+            return .success(true)
+        default:
+            return .failure(SecretSettingError(status: updateStatus))
+        }
+    }
+
+    /// Non-secret generation counter used to invalidate provider-local state
+    /// when a credential changes. It reveals neither the credential nor an
+    /// account identity.
+    static func secretRevision(_ suffix: String, provider id: String) -> Int {
+        max(0, defaults.integer(forKey: secretRevisionKey(suffix, provider: id)))
+    }
+
+    private static func bumpSecretRevision(_ suffix: String, provider id: String) {
+        let key = secretRevisionKey(suffix, provider: id)
+        let current = max(0, defaults.integer(forKey: key))
+        defaults.set(current == Int.max ? 0 : current + 1, forKey: key)
+    }
+
+    private static func secretRevisionKey(_ suffix: String, provider id: String) -> String {
+        "provider.secretRevision.\(id).\(suffix)"
     }
 
     /// Full key for a declared provider setting: "provider.<id>.<suffix>".

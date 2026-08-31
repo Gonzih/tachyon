@@ -100,6 +100,29 @@ final class OmpProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.detail, "opencode-zen · nemotron-3-ultra-free")
     }
 
+    func testBoundedWindowsPutWorstFirstAndParseISOReset() async {
+        let dbPath = home.appendingPathComponent("agent/agent.db").path
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(dbPath, &db), SQLITE_OK)
+        let now = Int(Date().timeIntervalSince1970)
+        let insert = """
+            INSERT INTO usage_history VALUES (
+              \(now - 30), 'openai', 'c', NULL, NULL,
+              'session', 'Session', 'Session', 0.82, 'ok',
+              '2099-01-02T03:04:05.678Z');
+            """
+        XCTAssertEqual(sqlite3_exec(db, insert, nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+
+        let state = await OmpProvider().snapshot()
+        guard case .ok(let snapshot) = state else {
+            return XCTFail("expected .ok, got \(state)")
+        }
+        XCTAssertEqual(snapshot.primary.percentUsed, 82)
+        XCTAssertEqual(snapshot.windows.first, snapshot.primary)
+        XCTAssertNotNil(snapshot.primary.resetsAt)
+    }
+
     func testMissingDatabaseIsNotSignedIn() async {
         try? FileManager.default.removeItem(at: home.appendingPathComponent("agent/agent.db"))
         let provider = OmpProvider()

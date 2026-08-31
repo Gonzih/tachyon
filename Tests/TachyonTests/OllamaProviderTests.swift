@@ -30,6 +30,19 @@ final class OllamaProviderTests: XCTestCase {
         XCTAssertEqual(counts, OllamaProvider.RequestCounts(pastHour: 0, today: 0))
     }
 
+    func testSameDayFutureRequestIsExcludedFromBothWindows() {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy/MM/dd - HH:mm:ss"
+        let now = formatter.date(from: "2026/08/28 - 22:30:00")!
+
+        let counts = OllamaProvider.countRequests(
+            lines: [gin("2026/08/28 - 22:31:00")],
+            now: now
+        )
+
+        XCTAssertEqual(counts, OllamaProvider.RequestCounts(pastHour: 0, today: 0))
+    }
+
     func testCountWindowMeter() {
         let window = UsageWindow(label: "Requests · today", count: 42, unit: "requests", resetsAt: nil)
         XCTAssertNil(window.percentUsed)

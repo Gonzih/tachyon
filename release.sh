@@ -15,6 +15,11 @@ cd "$(dirname "$0")"
 
 VERSION="${1:-1.0}"
 TEAM_ID="UQB3368A84"
+
+# Refuse to sign or notarize anything that has not passed the exact same
+# deterministic gate as CI, plus the credential-backed provider diagnostic.
+./verify.sh --live
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 

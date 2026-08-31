@@ -1,6 +1,22 @@
 import AppKit
 import SwiftUI
 
+/// One policy for every Tachyon surface that may be ordered independently.
+///
+/// These flags are deliberately verbose and non-redundant. `canJoinAllSpaces`
+/// covers the user's Spaces, `canJoinAllApplications` lets a floating overlay
+/// follow another app's window set (including its full-screen Space), and
+/// `fullScreenAuxiliary` permits an intentional edge reveal there. Removing
+/// any one of them can strand a panel in the Space where it was first ordered.
+enum OverlayPanelPolicy {
+    static let collectionBehavior: NSWindow.CollectionBehavior = [
+        .canJoinAllSpaces,
+        .canJoinAllApplications,
+        .stationary,
+        .fullScreenAuxiliary,
+    ]
+}
+
 /// Borderless, non-activating panel. Never takes focus, floats at status-bar
 /// level so a revealed pill draws over ordinary windows, and follows the user
 /// across spaces and full-screen apps.
@@ -17,7 +33,7 @@ final class PillPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = true
         level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        collectionBehavior = OverlayPanelPolicy.collectionBehavior
         isMovableByWindowBackground = false
         ignoresMouseEvents = false
         hidesOnDeactivate = false

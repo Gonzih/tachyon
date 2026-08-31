@@ -21,15 +21,20 @@ final class FSEventsWatcher: @unchecked Sendable {
         self.path = path
         self.latency = latency
         self.onChange = onChange
-        self.queue = DispatchQueue(label: "dev.gonzih.tachyon.fsevents.\(abs(path.hashValue))")
+        let pathHash = String(UInt(bitPattern: path.hashValue), radix: 16)
+        self.queue = DispatchQueue(label: "dev.gonzih.tachyon.fsevents.\(pathHash)")
     }
 
-    func start() {
-        queue.async { [self] in
-            guard streamRef == nil else { return }
+    /// Starts synchronously and reports whether a live stream exists. Missing
+    /// paths return false so the model can retry after the provider creates
+    /// them instead of retaining a permanently inert watcher.
+    @discardableResult
+    func start() -> Bool {
+        queue.sync { [self] in
+            guard streamRef == nil else { return true }
             guard FileManager.default.fileExists(atPath: path) else {
-                Log.provider.debug("FSEvents: \(self.path, privacy: .public) missing; not watching")
-                return
+                Log.provider.debug("FSEvents: watched path missing")
+                return false
             }
 
             var context = FSEventStreamContext(
@@ -50,7 +55,9 @@ final class FSEventsWatcher: @unchecked Sendable {
             }
 
             let flags = FSEventStreamCreateFlags(
-                kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer
+                kFSEventStreamCreateFlagFileEvents
+                    | kFSEventStreamCreateFlagNoDefer
+                    | kFSEventStreamCreateFlagUseCFTypes
             )
             guard let stream = FSEventStreamCreate(
                 kCFAllocatorDefault,
@@ -61,19 +68,20 @@ final class FSEventsWatcher: @unchecked Sendable {
                 latency,
                 flags
             ) else {
-                Log.provider.error("FSEvents: failed to create stream for \(self.path, privacy: .public)")
-                return
+                Log.provider.error("FSEvents: failed to create stream")
+                return false
             }
 
             FSEventStreamSetDispatchQueue(stream, queue)
             guard FSEventStreamStart(stream) else {
                 FSEventStreamInvalidate(stream)
                 FSEventStreamRelease(stream)
-                Log.provider.error("FSEvents: failed to start stream for \(self.path, privacy: .public)")
-                return
+                Log.provider.error("FSEvents: failed to start stream")
+                return false
             }
             streamRef = stream
-            Log.provider.info("FSEvents: watching \(self.path, privacy: .public)")
+            Log.provider.info("FSEvents: watching provider path")
+            return true
         }
     }
 
@@ -88,11 +96,7 @@ final class FSEventsWatcher: @unchecked Sendable {
     }
 
     deinit {
-        // `queue.sync` from deinit is safe: no other work re-enters this object.
-        guard let stream = streamRef else { return }
-        streamRef = nil
-        FSEventStreamStop(stream)
-        FSEventStreamInvalidate(stream)
-        FSEventStreamRelease(stream)
+        // Preserve the queue-confinement contract during teardown too.
+        stop()
     }
 }

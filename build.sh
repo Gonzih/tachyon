@@ -49,10 +49,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 if [ "$SIGN_IDENTITY" = "-" ]; then
-    # Ad-hoc signature with an explicit identifier, so the identity stays
-    # stable across rebuilds. The Claude keychain read does not depend on
-    # this: it shells out to /usr/bin/security precisely so the
-    # "Always Allow" ACL survives.
+    # Keep an explicit signing identifier, but do not mistake it for a stable
+    # TCC identity: an ad-hoc designated requirement is tied to this exact
+    # build. The Claude keychain read does not depend on it; it shells out to
+    # /usr/bin/security precisely so the "Always Allow" ACL survives rebuilds.
     codesign --force --sign - --identifier dev.gonzih.tachyon "$APP"
     echo "Built $APP (ad-hoc)"
 else

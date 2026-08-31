@@ -43,7 +43,7 @@ final class PopoverPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = true
         level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        collectionBehavior = OverlayPanelPolicy.collectionBehavior
         animationBehavior = .none
         contentView = container
         container.onEnter = { [weak self] in self?.onPointerInside?(true) }
@@ -136,12 +136,6 @@ final class PopoverPanel: NSPanel {
                 self.alphaValue = 1
             }
         })
-    }
-
-    /// Live-updates content without moving the panel (new poll arrived).
-    func refresh(slot: ProviderSlot) {
-        guard targetProviderID == slot.id, isVisible else { return }
-        container.setContent(DetailView(slot: slot), bodyWidth: DetailView.width)
     }
 
     private static func measure(_ view: DetailView) -> CGSize {

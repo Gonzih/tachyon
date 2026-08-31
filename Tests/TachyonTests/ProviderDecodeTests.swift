@@ -118,6 +118,7 @@ final class ProviderDecodeTests: XCTestCase {
     private let cursorFixture = """
     {
       "planUsage": {"totalPercentUsed": 21.0, "autoPercentUsed": 5.0, "apiPercentUsed": 0.2},
+      "billingCycleStart": "2026-08-15T00:00:00Z",
       "billingCycleEnd": "2026-09-15T00:00:00Z",
       "spendLimitUsage": {"individualUsed": 12.5, "individualLimit": 50.0}
     }
@@ -130,6 +131,8 @@ final class ProviderDecodeTests: XCTestCase {
         XCTAssertTrue(labels.contains("Auto"), "≥1% sub-meter shows")
         XCTAssertFalse(labels.contains("API"), "sub-1% sub-meter is noise")
         XCTAssertTrue(labels.contains("Spend limit"))
+        XCTAssertEqual(snapshot?.primary.windowSeconds, 31 * 24 * 60 * 60)
+        XCTAssertTrue(snapshot?.windows.allSatisfy { $0.windowSeconds == 31 * 24 * 60 * 60 } == true)
     }
 
     func testCursorSpendLimitPercent() {
@@ -138,17 +141,84 @@ final class ProviderDecodeTests: XCTestCase {
         XCTAssertEqual(spendRow?.percentUsed, 25)
     }
 
+    func testCursorMillisecondPeriodFeedsGenericPaceProjection() throws {
+        let now = Date()
+        let halfWindow: TimeInterval = 5 * 24 * 60 * 60
+        let startMillis = Int64(now.addingTimeInterval(-halfWindow).timeIntervalSince1970 * 1_000)
+        let end = now.addingTimeInterval(halfWindow)
+        let endMillis = Int64(end.timeIntervalSince1970 * 1_000)
+        let fixture = """
+        {
+          "planUsage": {"totalPercentUsed": 21},
+          "billingCycleStart": "\(startMillis)",
+          "billingCycleEnd": "\(endMillis)"
+        }
+        """
+
+        let snapshot = try XCTUnwrap(CursorProvider.decode(Data(fixture.utf8)))
+        XCTAssertEqual(snapshot.primary.resetsAt?.timeIntervalSince1970 ?? 0,
+                       end.timeIntervalSince1970, accuracy: 0.002)
+        XCTAssertEqual(snapshot.primary.windowSeconds ?? 0, halfWindow * 2, accuracy: 0.002)
+        XCTAssertEqual(PaceFormat.caption(for: snapshot.primary), "At this pace, ~42% by reset")
+    }
+
+    // MARK: Grok
+
+    func testGrokPeriodDurationFeedsEveryPaceWindow() throws {
+        let start = Date().addingTimeInterval(-3 * 24 * 60 * 60)
+        let end = start.addingTimeInterval(7 * 24 * 60 * 60)
+        let formatter = ISO8601DateFormatter()
+        let config = JSONValue.parse(Data("""
+        {
+          "creditUsagePercent": 30,
+          "currentPeriod": {
+            "start": "\(formatter.string(from: start))",
+            "end": "\(formatter.string(from: end))"
+          },
+          "productUsage": [{"productName":"Grok Fast","usagePercent":20}],
+          "onDemandCap": 100,
+          "onDemandUsed": 10
+        }
+        """.utf8))
+
+        let snapshot = try XCTUnwrap(GrokProvider.decodeBilling(config, asOf: Date()))
+        XCTAssertEqual(snapshot.primary.resetsAt?.timeIntervalSince1970 ?? 0,
+                       end.timeIntervalSince1970, accuracy: 1)
+        XCTAssertTrue(snapshot.windows.allSatisfy { $0.windowSeconds == 7 * 24 * 60 * 60 })
+        XCTAssertNotNil(PaceFormat.caption(for: snapshot.primary))
+    }
+
+    func testGrokReversedPeriodKeepsResetButDisablesProjection() throws {
+        let config = JSONValue.parse(Data("""
+        {
+          "creditUsagePercent": 30,
+          "currentPeriod": {
+            "startTime": "2026-09-15T00:00:00Z",
+            "endTime": "2026-09-01T00:00:00Z"
+          }
+        }
+        """.utf8))
+
+        let snapshot = try XCTUnwrap(GrokProvider.decodeBilling(config, asOf: Date()))
+        XCTAssertNotNil(snapshot.primary.resetsAt)
+        XCTAssertNil(snapshot.primary.windowSeconds)
+        XCTAssertNil(PaceFormat.caption(for: snapshot.primary))
+    }
+
     // MARK: OpenRouter monthly baseline
 
     func testOpenRouterMonthBaseline() {
         let monthKey = "provider.openrouter.baseline.month"
         let valueKey = "provider.openrouter.baseline.usage"
+        let revisionKey = "provider.openrouter.baseline.secretRevision"
         defer {
             UserDefaults.standard.removeObject(forKey: monthKey)
             UserDefaults.standard.removeObject(forKey: valueKey)
+            UserDefaults.standard.removeObject(forKey: revisionKey)
         }
         UserDefaults.standard.removeObject(forKey: monthKey)
         UserDefaults.standard.removeObject(forKey: valueKey)
+        UserDefaults.standard.removeObject(forKey: revisionKey)
 
         // First reading of the month becomes the baseline → spend 0.
         XCTAssertEqual(OpenRouterProvider.monthSpend(cumulative: 100), 0)

@@ -69,9 +69,10 @@ actor OmpProvider: UsageProvider {
         // today's spend. Real limits beat synthetic ones.
         var windows: [UsageWindow] = []
         let primary: UsageWindow
-        if let worst = limits.max(by: { ($0.percentUsed ?? 0) < ($1.percentUsed ?? 0) }) {
+        let orderedLimits = limits.worstFirst()
+        if let worst = orderedLimits.first {
             primary = worst
-            windows = limits
+            windows = orderedLimits
             windows.append(spendToday)
             windows.append(spendMonth)
         } else if spendMonth.percentUsed != nil {
@@ -150,7 +151,7 @@ actor OmpProvider: UsageProvider {
             return Date(timeIntervalSince1970: value > 1e12 ? value / 1000 : value)
         case SQLITE_TEXT:
             guard let text = sqlite3_column_text(statement, column) else { return nil }
-            return ISO8601DateFormatter().date(from: String(cString: text))
+            return DateParsing.iso8601(String(cString: text))
         default:
             return nil
         }
@@ -246,7 +247,7 @@ actor OmpProvider: UsageProvider {
 
     private static func configDefaultModel() -> String? {
         let configPath = URL(fileURLWithPath: home).appendingPathComponent("agent/config.yml").path
-        guard let data = FileManager.default.contents(atPath: configPath),
+        guard let data = Usage.boundedFile(path: configPath, maximumBytes: 512 * 1024),
               let text = String(data: data, encoding: .utf8) else { return nil }
         for line in text.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)

@@ -17,6 +17,8 @@ actor GrokProvider: UsageProvider {
     private static let expectedIssuer = "https://auth.x.ai"
     private static let logTailBytes = 8 * 1024 * 1024
     private static let logFreshness: TimeInterval = 300
+    private static let maximumFutureClockSkew: TimeInterval = 60
+    private static let maxConfigBytes = 1024 * 1024
 
     private struct Account: Sendable {
         let key: String
@@ -61,27 +63,53 @@ actor GrokProvider: UsageProvider {
 
     func snapshot() async -> ProviderState {
         guard let account = Self.loadAccount() else {
-            if let fallback = Self.logSnapshot() { return .stale(fallback, asOf: fallback.asOf) }
-            return .authError(Self.authGuidance)
+            return Self.signedOutState()
         }
         // No OIDC refresh in v1: the tokens rotate single-use, and racing the CLI
         // for them would break the user's sign-in.
         guard !account.isExpired else {
-            if let fallback = Self.logSnapshot() { return .stale(fallback, asOf: fallback.asOf) }
-            return .authError(Self.authGuidance)
+            return Self.signedOutState()
         }
+        return await authenticatedSnapshot(using: account)
+    }
 
+    func reading() async -> ProviderReading {
+        guard let account = Self.loadAccount(), !account.isExpired else {
+            return ProviderReading(state: Self.signedOutState(), accountFingerprint: nil)
+        }
+        let state = await authenticatedSnapshot(using: account)
+        guard !Task.isCancelled else {
+            return ProviderReading(state: .unavailable, accountFingerprint: nil)
+        }
+        return ProviderReading(
+            state: state,
+            accountFingerprint: Self.credentialFingerprint(
+                key: account.key,
+                userID: account.userID
+            )
+        )
+    }
+
+    private static func signedOutState() -> ProviderState {
+        if let fallback = logSnapshot() { return .stale(fallback, asOf: fallback.asOf) }
+        return .authError(authGuidance)
+    }
+
+    private func authenticatedSnapshot(using account: Account) async -> ProviderState {
         do {
             var headers = [
                 "Authorization": "Bearer \(account.key)",
                 "X-XAI-Token-Auth": "xai-grok-cli",
                 "User-Agent": "GrokCLI/\(Self.installedVersion() ?? "1.0.0")",
             ]
-            if let userID = account.userID { headers["x-userid"] = userID }
+            if let userID = account.userID,
+               Usage.headersAreSafe(["x-userid": userID]) {
+                headers["x-userid"] = userID
+            }
 
             let result = try await Usage.get(Self.billingURL, headers: headers)
+            guard !Task.isCancelled else { return .unavailable }
             if result.status == 401 || result.status == 403 {
-                if let fallback = Self.logSnapshot() { return .stale(fallback, asOf: fallback.asOf) }
                 return .authError(Self.authGuidance)
             }
             if (200..<300).contains(result.status) {
@@ -92,11 +120,25 @@ actor GrokProvider: UsageProvider {
             }
             Log.provider.error("grok billing HTTP \(result.status) or undecodable")
         } catch {
-            Log.provider.error("grok billing request failed: \(error.localizedDescription, privacy: .public)")
+            Log.provider.error("grok billing request failed")
         }
 
-        if let fallback = Self.logSnapshot() { return .stale(fallback, asOf: fallback.asOf) }
+        // Unified logs carry no account identifier. They are useful as recent
+        // signed-out history, but cannot safely stand in for a current account.
         return .unavailable
+    }
+
+    static func credentialFingerprint(key: String, userID: String?) -> String? {
+        guard !key.isEmpty else { return nil }
+        var components = [key]
+        if let userID = userID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !userID.isEmpty {
+            components.append(userID)
+        }
+        return OpaqueAccountIdentity.fingerprint(
+            namespace: "grok-credential",
+            components: components
+        )
     }
 
     // MARK: - Decoding
@@ -113,17 +155,34 @@ actor GrokProvider: UsageProvider {
         guard present else { return nil }
 
         let percent = config["creditUsagePercent"].double ?? 0
-        let periodEnd = config["currentPeriod"]["endTime"].isoDate
-            ?? config["currentPeriod"]["end"].isoDate
-            ?? config["currentPeriod"]["endTime"].epochDate
+        let period = config["currentPeriod"]
+        let periodStart = period["startTime"].isoDate
+            ?? period["start"].isoDate
+            ?? period["startTime"].epochDate
+            ?? period["start"].epochDate
+        let periodEnd = period["endTime"].isoDate
+            ?? period["end"].isoDate
+            ?? period["endTime"].epochDate
+            ?? period["end"].epochDate
+        let periodSeconds = periodDuration(start: periodStart, end: periodEnd)
 
-        let primary = UsageWindow(label: "Credits", percentUsed: percent, resetsAt: periodEnd)
+        let primary = UsageWindow(
+            label: "Credits",
+            percentUsed: percent,
+            resetsAt: periodEnd,
+            windowSeconds: periodSeconds
+        )
         var windows = [primary]
 
         for entry in config["productUsage"].array {
             guard let name = entry["productName"].string ?? entry["name"].string else { continue }
             let used = entry["usagePercent"].double ?? entry["creditUsagePercent"].double ?? 0
-            windows.append(UsageWindow(label: name, percentUsed: used, resetsAt: periodEnd))
+            windows.append(UsageWindow(
+                label: name,
+                percentUsed: used,
+                resetsAt: periodEnd,
+                windowSeconds: periodSeconds
+            ))
         }
 
         if let cap = config["onDemandCap"].double, cap > 0 {
@@ -131,7 +190,8 @@ actor GrokProvider: UsageProvider {
             windows.append(UsageWindow(
                 label: "On-demand",
                 percentUsed: used / cap * 100,
-                resetsAt: periodEnd
+                resetsAt: periodEnd,
+                windowSeconds: periodSeconds
             ))
         }
 
@@ -142,6 +202,12 @@ actor GrokProvider: UsageProvider {
             asOf: asOf,
             detail: tier.map { $0.prefix(1).uppercased() + $0.dropFirst() }
         )
+    }
+
+    private static func periodDuration(start: Date?, end: Date?) -> TimeInterval? {
+        guard let start, let end else { return nil }
+        let duration = end.timeIntervalSince(start)
+        return duration.isFinite && duration > 0 ? duration : nil
     }
 
     // MARK: - Stream B: unified log tail
@@ -160,11 +226,16 @@ actor GrokProvider: UsageProvider {
             // Keep walking backwards rather than aborting: a record with an
             // unrecognized timestamp key, or one newer than the freshness
             // window is not evidence that no usable record exists further back.
-            guard let asOf, Date().timeIntervalSince(asOf) <= logFreshness else { continue }
+            guard let asOf, logTimestampIsFresh(asOf, now: Date()) else { continue }
             guard let snapshot = decodeBilling(root["ctx"]["config"], asOf: asOf) else { continue }
             return snapshot
         }
         return nil
+    }
+
+    static func logTimestampIsFresh(_ asOf: Date, now: Date) -> Bool {
+        let age = now.timeIntervalSince(asOf)
+        return age >= -maximumFutureClockSkew && age <= logFreshness
     }
 
     // MARK: - Auth
@@ -172,7 +243,9 @@ actor GrokProvider: UsageProvider {
     /// `auth.json` is a map of scope key → account record. Only entries issued
     /// by `https://auth.x.ai` are ours; anything else belongs to another product.
     private static func loadAccount() -> Account? {
-        guard let data = FileManager.default.contents(atPath: authPath) else { return nil }
+        guard let data = Usage.boundedFile(path: authPath, maximumBytes: maxConfigBytes) else {
+            return nil
+        }
         let root = JSONValue.parse(data)
         var best: Account?
         for (_, entry) in root.dictionary {
@@ -199,7 +272,9 @@ actor GrokProvider: UsageProvider {
             "/usr/local/lib/node_modules/@xai-official/grok/package.json",
         ]
         for path in candidates {
-            guard let data = FileManager.default.contents(atPath: path) else { continue }
+            guard let data = Usage.boundedFile(path: path, maximumBytes: maxConfigBytes) else {
+                continue
+            }
             if let version = JSONValue.parse(data)["version"].string { return version }
         }
         return nil
