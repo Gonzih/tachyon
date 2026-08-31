@@ -4,21 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tachyon — ambient usage rings for AI providers</title>
-<meta name="description" content="A native macOS edge pill showing live rate-limit usage for Claude Code, Claude Desktop, Codex CLI, Codex Desktop, Grok, Cursor, Oh My Pi, OpenRouter and Ollama. Zero config. Faster than your quota.">
+<meta name="description" content="A native macOS edge pill showing live AI rate-limit usage, pace, and runway for Claude Code, Codex, Cursor, OpenRouter and more. Zero config. Faster than your quota.">
 <meta property="og:title" content="Tachyon">
-<meta property="og:description" content="Ambient usage rings for your AI providers. Native macOS, zero config.">
+<meta property="og:description" content="Ambient usage rings that show where your current pace is headed. Native macOS, zero config.">
 <meta property="og:image" content="https://tachyon.maksim.sh/icon-256.png">
 <link rel="icon" href="icon-256.png">
 <style>
   :root {
     --bg: #fafafa; --fg: #171717; --muted: #71717a; --card: #ffffff;
     --pill: #000; --pill-fg: #fff; --border: rgba(0,0,0,.08);
-    --green: #24a148; --yellow: #dfa400; --red: #e5342b;
+    --green: #24a148; --yellow: #dfa400; --orange: #e67e00; --red: #e5342b;
   }
   body.dark {
     --bg: #101014; --fg: #f4f4f5; --muted: #8b8b93; --card: #17171c;
     --pill: #000; --pill-fg: #fff; --border: rgba(255,255,255,.09);
-    --green: #30d158; --yellow: #ffd60a; --red: #ff453a;
+    --green: #30d158; --yellow: #ffd60a; --orange: #ff9f0a; --red: #ff453a;
   }
   * { margin: 0; box-sizing: border-box; }
   body {
@@ -67,6 +67,46 @@
   .providers { text-align: center; color: var(--muted); font-size: 14px; margin-top: 10px; }
   .providers b { color: var(--fg); font-weight: 600; }
 
+  .demo-head { max-width: 650px; margin: 0 auto 30px; text-align: center; }
+  .demo-head h2 { font-size: clamp(26px, 4vw, 36px); margin-bottom: 10px; }
+  .demo-head p, .runway-copy { color: var(--muted); font-size: 16px; }
+
+  .runway { position: relative; overflow: hidden; padding: 86px 0 76px; }
+  .runway::before { content: ""; position: absolute; inset: 8% 8% auto; height: 420px;
+    background: radial-gradient(circle at 18% 45%, rgba(48,209,88,.13), transparent 34%),
+      radial-gradient(circle at 52% 18%, rgba(255,159,10,.16), transparent 36%),
+      radial-gradient(circle at 86% 48%, rgba(255,69,58,.12), transparent 34%);
+    filter: blur(28px); pointer-events: none; }
+  .runway .wrap { position: relative; }
+  .runway-copy { max-width: 660px; margin: -6px auto 30px; text-align: center; }
+  .runway-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .runway-card { --accent: var(--green); min-width: 0;
+    background: color-mix(in srgb, var(--card) 92%, var(--accent) 8%);
+    border: 1px solid color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
+    border-radius: 22px; padding: 18px; box-shadow: 0 18px 54px rgba(0,0,0,.08);
+    transition: transform .25s ease, box-shadow .25s ease, background .6s, border-color .6s; }
+  .runway-card:hover { transform: translateY(-4px); box-shadow: 0 24px 64px rgba(0,0,0,.14); }
+  .runway-card.hot { --accent: var(--orange); }
+  .runway-card h3 { font-size: 17px; line-height: 1.3; margin: 18px 2px 7px; }
+  .runway-card > p { color: var(--muted); font-size: 13px; margin: 0 2px; }
+  .mini-pop { min-height: 132px; padding: 14px; border-radius: 15px; color: #f4f4f5;
+    background: linear-gradient(145deg, #18181d, #0d0d10); border: 1px solid rgba(255,255,255,.09);
+    box-shadow: inset 0 1px rgba(255,255,255,.04), 0 14px 34px rgba(0,0,0,.22); }
+  .mini-head { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 650; margin-bottom: 15px; }
+  .mini-dot { width: 11px; height: 11px; border: 2px solid var(--accent); border-radius: 50%;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent); }
+  .mini-source { color: rgba(255,255,255,.58); background: rgba(255,255,255,.08);
+    border-radius: 4px; padding: 2px 5px; font-size: 9px; font-weight: 500; }
+  .mini-label { display: flex; justify-content: space-between; color: rgba(255,255,255,.86);
+    font-size: 11px; margin-bottom: 5px; }
+  .mini-track { height: 4px; border-radius: 99px; background: rgba(255,255,255,.14); overflow: hidden; }
+  .mini-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+  .mini-cap { display: flex; justify-content: space-between; gap: 8px; color: rgba(255,255,255,.65);
+    font-size: 10px; line-height: 1.35; margin-top: 5px; }
+  .mini-cap .forecast { color: rgba(255,255,255,.88); text-align: right; }
+  .truth-note { margin-top: 22px; text-align: center; color: var(--muted); font-size: 13px; }
+  .truth-note strong { color: var(--fg); }
+
   footer { padding: 48px 0 64px; text-align: center; color: var(--muted); font-size: 13px; }
   footer a { color: var(--muted); }
   footer .links { margin-bottom: 10px; }
@@ -85,13 +125,17 @@
          transform: rotate(-90deg); transform-origin: center;
          stroke-dasharray: 100.5; animation: fill-arc 1.4s ease-out .8s both; }
   @keyframes fill-arc { from { stroke-dashoffset: 100.5; } }
+  @keyframes pace-breathe { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+  .arc.pace-hot { animation: fill-arc 1.4s ease-out .8s both, pace-breathe .9s ease-in-out 2.2s infinite; }
   .dpill .track { stroke: var(--d-track); transition: stroke .5s; }
   .track { fill: none; stroke: rgba(255,255,255,.2); stroke-width: 3.5; }
   .stage { position: relative; height: 700px; border-radius: 0; overflow: hidden;
     border: none; width: 100vw; margin-left: calc(50% - 50vw);
     background: linear-gradient(135deg, #2d6a72 0%, #3e8894 34%, #7fb2a6 62%, #c98d5f 100%); }
-  .hint { position: absolute; left: 16px; bottom: 12px; color: rgba(255,255,255,.75);
-    font-size: 12px; transition: opacity .4s; }
+  .hint { position: absolute; left: 16px; bottom: 14px; max-width: calc(100% - 110px);
+    color: rgba(255,255,255,.9); background: rgba(0,0,0,.28); backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: 7px 11px;
+    font-size: 11px; transition: opacity .4s; }
   .fakewin { position: absolute; top: 44px; left: 40px; width: 58%; border-radius: 12px;
     background: var(--d-surface); box-shadow: 0 18px 50px rgba(0,0,0,.35); transition: background .5s;
     transform: translateX(0); transition: transform 1.1s cubic-bezier(.4,0,.2,1), width 1.1s cubic-bezier(.4,0,.2,1); }
@@ -154,12 +198,17 @@
   .dpop .bar i { display: block; height: 100%; border-radius: 2px; }
   .dpop .cap { font-size: 10px; color: var(--d-dim2); margin-top: 3px; }
   .dpop .cap.paced { display: flex; justify-content: space-between; gap: 6px; }
+  .dpop .cap.paced span:last-child { color: var(--d-ink); opacity: .84; text-align: right; }
+  .dpop .bar i.pace-hot, .mini-fill.pace-hot { animation: pace-breathe .9s ease-in-out infinite; }
   .dpop .foot { font-size: 10px; color: var(--d-dim); margin-top: 2px; }
 
   .fcursor { position: absolute; z-index: 5; left: 40%; top: 30%; opacity: 0;
     transition: transform 1s cubic-bezier(.4,0,.2,1), opacity .3s;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); pointer-events: none; }
-  @media (prefers-reduced-motion: reduce) { .fakewin, .dpill, .fcursor { transition: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .fakewin, .dpill, .fcursor, .runway-card { transition: none; }
+    .arc.pace-hot, .dpop .bar i.pace-hot, .mini-fill.pace-hot { animation: none; }
+  }
 
   /* Mobile */
   @media (max-width: 640px) {
@@ -173,7 +222,14 @@
     .fakewin.over { width: calc(100% - 44px); }
     .dpill { transform: translateY(-50%) scale(.92); transform-origin: right center; }
     .dpill.hidden { transform: translate(76px, -50%) scale(.92); }
-    .dpop { width: min(270px, calc(100vw - 150px)); right: 74px; padding: 12px; }
+    .dpop { width: min(280px, calc(100vw - 92px)); right: 72px; padding: 12px; }
+    .dpop .cap.paced { display: block; }
+    .dpop .cap.paced span:last-child { display: block; text-align: left; margin-top: 2px; }
+    .demo-head { margin-bottom: 22px; }
+    .runway { padding: 62px 0 54px; }
+    .runway-grid { grid-template-columns: 1fr; }
+    .runway-card { padding: 16px; }
+    .hint { left: 10px; bottom: 10px; max-width: calc(100% - 92px); border-radius: 12px; }
     }
   .copybtn { background: none; border: none; padding: 0; cursor: pointer;
     color: var(--muted); display: inline-flex; align-items: center; }
@@ -209,6 +265,10 @@
 
 <section>
   <div class="wrap">
+    <div class="demo-head">
+      <h2>Your runway, without leaving the flow.</h2>
+      <p>Hover a ring for the real detail view. Tachyon keeps raw usage visible, then adds the context that changes what you do next.</p>
+    </div>
     <div class="stage t-light" id="stage" aria-label="Interactive demo of the Tachyon edge pill">
             <!-- fake macOS window that periodically overlaps the pill -->
       <div class="fakewin" id="fakewin">
@@ -220,7 +280,7 @@
       </div>
 
       <!-- color shim -->
-      <div class="shim" id="shim"><i style="background:var(--red)"></i><i style="background:var(--red)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:rgba(255,255,255,.45)"></i><i style="background:var(--green)"></i></div>
+      <div class="shim" id="shim"><i style="background:var(--red)"></i><i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--green)"></i><i style="background:rgba(255,255,255,.45)"></i><i style="background:var(--green)"></i></div>
 
       <!-- the pill -->
       <div class="dpill" id="dpill">
@@ -228,7 +288,7 @@
           <div class="ringbox">
             <svg width="36" height="36" viewBox="0 0 36 36">
               <circle class="track" cx="18" cy="18" r="16"/>
-              <circle class="arc" cx="18" cy="18" r="16" stroke="var(--red)" stroke-dashoffset="8.1"/>
+              <circle class="arc pace-hot" cx="18" cy="18" r="16" stroke="var(--red)" stroke-dashoffset="8.1"/>
             </svg>
             <div class="glyphwrap"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg></div>
           </div>
@@ -248,7 +308,7 @@
           <div class="ringbox">
             <svg width="36" height="36" viewBox="0 0 36 36">
               <circle class="track" cx="18" cy="18" r="16"/>
-              <circle class="arc" cx="18" cy="18" r="16" stroke="var(--yellow)" stroke-dashoffset="48.2" style="animation-delay:1.1s"/>
+              <circle class="arc pace-hot" cx="18" cy="18" r="16" stroke="var(--orange)" stroke-dashoffset="48.2" style="animation-delay:1.1s"/>
             </svg>
             <div class="glyphwrap"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815"/></svg></div>
           </div>
@@ -289,7 +349,7 @@
       <div class="dpop" id="pop-claude">
         <h4><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg> Claude <span class="source">Code</span></h4>
         <div class="row"><div class="rl"><span>Current session</span></div>
-          <div class="bar"><i style="width:92%;background:var(--red)"></i></div><div class="cap">92% Used</div></div>
+          <div class="bar"><i class="pace-hot" style="width:92%;background:var(--red)"></i></div><div class="cap paced"><span>92% Used</span><span>At this pace, limit before reset</span></div></div>
         <div class="row"><div class="rl"><span>Weekly</span></div>
           <div class="bar"><i style="width:14%;background:var(--green)"></i></div><div class="cap">14% Used</div></div>
         <div class="foot">Max (20x)</div>
@@ -303,13 +363,13 @@
       <div class="dpop" id="pop-grok">
         <h4><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815"/></svg> Grok</h4>
         <div class="row"><div class="rl"><span>Weekly credits</span></div>
-          <div class="bar"><i style="width:52%;background:var(--yellow)"></i></div><div class="cap">52% Used</div></div>
+          <div class="bar"><i class="pace-hot" style="width:52%;background:var(--orange)"></i></div><div class="cap paced"><span>52% Used</span><span>At this pace, limit before reset</span></div></div>
         <div class="foot">SuperGrok</div>
       </div>
       <div class="dpop" id="pop-cursor">
         <h4><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/></svg> Cursor</h4>
         <div class="row"><div class="rl"><span>Billing cycle</span></div>
-          <div class="bar"><i style="width:21%;background:var(--green)"></i></div><div class="cap">21% Used</div></div>
+          <div class="bar"><i style="width:21%;background:var(--green)"></i></div><div class="cap paced"><span>21% Used</span><span>At this pace, ~42% by reset</span></div></div>
         <div class="foot">Pro</div>
       </div>
 
@@ -336,7 +396,53 @@
         <svg width="18" height="18" viewBox="0 0 24 24"><path d="M5 3l14 9-6.5 1.5L10 20z" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>
       </div>
 
+      <div class="hint" id="demo-status" aria-hidden="true">Hover any ring to inspect its live runway.</div>
+
           </div>
+  </div>
+</section>
+
+<section class="runway">
+  <div class="wrap">
+    <h2>Know where this pace ends.</h2>
+    <p class="runway-copy">A percentage tells you where you are. Tachyon also shows where the current pace is taking you—without rewriting the raw number.</p>
+
+    <div class="runway-grid">
+      <article class="runway-card hot">
+        <div class="mini-pop">
+          <div class="mini-head"><i class="mini-dot"></i>Claude <span class="mini-source">Code</span></div>
+          <div class="mini-label"><span>Weekly</span></div>
+          <div class="mini-track"><i class="mini-fill pace-hot" style="width:55%"></i></div>
+          <div class="mini-cap"><span>55% Used</span><span class="forecast">At this pace, limit before reset</span></div>
+        </div>
+        <h3>The number stays honest.</h3>
+        <p>55% remains 55%. The color moves one band and breathes only when the projected runway crosses a real provider limit.</p>
+      </article>
+
+      <article class="runway-card">
+        <div class="mini-pop">
+          <div class="mini-head"><i class="mini-dot"></i>Cursor</div>
+          <div class="mini-label"><span>Billing cycle</span></div>
+          <div class="mini-track"><i class="mini-fill" style="width:30%"></i></div>
+          <div class="mini-cap"><span>30% Used</span><span class="forecast">At this pace, ~60% by reset</span></div>
+        </div>
+        <h3>Cool pace is useful too.</h3>
+        <p>See a practical forecast while there is still plenty of room—without turning every meter into an alarm.</p>
+      </article>
+
+      <article class="runway-card budget">
+        <div class="mini-pop">
+          <div class="mini-head"><i class="mini-dot"></i>OpenRouter</div>
+          <div class="mini-label"><span>Credits</span></div>
+          <div class="mini-track"><i class="mini-fill" style="width:34%"></i></div>
+          <div class="mini-cap"><span>$34 of $100</span></div>
+        </div>
+        <h3>A budget is not a hard wall.</h3>
+        <p>Personal spend budgets use the same calm color language, but never pulse or pretend to be provider-enforced capacity.</p>
+      </article>
+    </div>
+
+    <p class="truth-note"><strong>No invented countdowns.</strong> Reset language appears only when a provider reports a reset.</p>
   </div>
 </section>
 
@@ -399,11 +505,23 @@ NEVER LEAK CREDENTIALS. No tokens, keys, cookies, session ids, account ids, or e
   const shim = document.getElementById('shim');
   const win = document.getElementById('fakewin');
   const cursor = document.getElementById('fcursor');
+  const status = document.getElementById('demo-status');
   const pops = Object.fromEntries(['claude','codex','grok','cursor','omp','openrouter'].map(k => [k, document.getElementById('pop-' + k)]));
+  const stories = {
+    claude: 'A hot pace breathes while the raw 92% stays raw.',
+    codex: 'A reached provider limit says exactly that.',
+    grok: '52% stays 52%; pace moves the signal one color ahead.',
+    cursor: 'A cool pace still shows where the runway is headed.',
+    omp: 'Spend remains spend—never a made-up percentage.',
+    openrouter: 'Personal budgets never masquerade as provider limits.'
+  };
 
   function showPop(key) {
     Object.values(pops).forEach(p => p.classList.remove('show'));
-    if (!key) return;
+    if (!key) {
+      status.textContent = 'Hover any ring to inspect its live runway.';
+      return;
+    }
     const ring = document.querySelector(`.dring[data-p="${key}"]`);
     const pop = pops[key];
     if (!ring || !pop) return;
@@ -411,6 +529,7 @@ NEVER LEAK CREDENTIALS. No tokens, keys, cookies, session ids, account ids, or e
     const rb = (ring.querySelector('.ringbox') || ring).getBoundingClientRect();
     pop.style.top = (rb.top - st.top + rb.height / 2) + 'px';
     pop.classList.add('show');
+    status.textContent = stories[key];
   }
 
   // Ring hover → popover (the real app's 300ms dwell, shortened for the web)
@@ -424,6 +543,7 @@ NEVER LEAK CREDENTIALS. No tokens, keys, cookies, session ids, account ids, or e
   stage.addEventListener('mouseleave', () => {
     clearTimeout(hoverTimer);
     Object.values(pops).forEach(p => p.classList.remove('show'));
+    status.textContent = 'Hover any ring to inspect its live runway.';
   });
   pill.addEventListener('mouseleave', e => {
     if (!e.relatedTarget || !e.relatedTarget.closest('.dpop'))
@@ -458,18 +578,22 @@ NEVER LEAK CREDENTIALS. No tokens, keys, cookies, session ids, account ids, or e
     if (step < tour.length) { showPop(tour[step]); return; }
     switch (step - tour.length) {
       case 0: // window slides over the pill → collapse to shim
+        status.textContent = 'A covering window turns the pill into a 5pt color shim.';
         win.classList.add('over');
         setTimeout(() => { if (!paused) { pill.classList.add('hidden'); shim.classList.add('on'); } }, 700);
         break;
       case 1: // cursor travels to the edge
+        status.textContent = 'Move to the edge when you want the detail back.';
         cursor.style.opacity = 1; at(stage.clientWidth * .45, stage.clientHeight * .3);
         setTimeout(() => { if (!paused) at(stage.clientWidth - 26, stage.clientHeight * .48); }, 80);
         break;
       case 2: // pill reveals over the window
+        status.textContent = 'The pill reveals without pulling you out of your app.';
         pill.classList.remove('hidden'); shim.classList.remove('on');
         setTimeout(() => { cursor.style.opacity = 0; }, 900);
         break;
       case 3: // window retreats — flip theme for the next pass
+        status.textContent = 'No obstruction. The ambient pill returns.';
         win.classList.remove('over');
         setTimeout(() => { if (!paused) flipTheme(); }, 1100);
         break;

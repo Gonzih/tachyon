@@ -25,6 +25,13 @@ enum StatusSummary {
     }
 }
 
+private enum UpdateMenuState {
+    case idle
+    case checking
+    case available(version: String)
+    case updating(version: String)
+}
+
 @main
 enum TachyonMain {
     static func main() {
@@ -43,8 +50,12 @@ enum TachyonMain {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let model = UsageModel()
+    private let brewUpdater = BrewUpdater()
     private var edge: EdgeController?
     private var statusItem: NSStatusItem?
+    private var updateCheckTask: Task<Void, Never>?
+    private var updateMenuState = UpdateMenuState.idle
+    private var notifiedUpdateVersion: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.app.info("Tachyon launching")
@@ -63,9 +74,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.start()
 
         installStatusItem()
+        startUpdateChecks()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        updateCheckTask?.cancel()
         model.stop()
         edge?.stop()
     }
@@ -241,6 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let refresh = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
+        menu.addItem(updateMenuItem())
 
         menu.addItem(displayMenuItem())
         menu.addItem(launchAtLoginItem())
@@ -253,6 +267,169 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quit = NSMenuItem(title: "Quit Tachyon", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
+    }
+
+    // MARK: Homebrew updates
+
+    private func updateMenuItem() -> NSMenuItem {
+        let title: String
+        let action: Selector?
+        switch updateMenuState {
+        case .idle:
+            title = "Check for Updates…"
+            action = #selector(checkForUpdatesOrUpdate)
+        case .checking:
+            title = "Checking for Updates…"
+            action = nil
+        case .available(let version):
+            title = "Update to Tachyon \(version)…"
+            action = #selector(checkForUpdatesOrUpdate)
+        case .updating:
+            title = "Updating Tachyon…"
+            action = nil
+        }
+
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        return item
+    }
+
+    private func startUpdateChecks() {
+        updateCheckTask?.cancel()
+        updateCheckTask = Task { [weak self] in
+            guard let self else { return }
+            await checkForUpdates(userInitiated: false)
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(86_400))
+                } catch {
+                    return
+                }
+                await checkForUpdates(userInitiated: false)
+            }
+        }
+    }
+
+    @objc private func checkForUpdatesOrUpdate() {
+        if case .available(let version) = updateMenuState {
+            offerUpdate(version: version)
+        } else {
+            Task { await checkForUpdates(userInitiated: true) }
+        }
+    }
+
+    private func checkForUpdates(userInitiated: Bool) async {
+        let fallbackState: UpdateMenuState
+        switch updateMenuState {
+        case .idle:
+            fallbackState = .idle
+        case .available(let version):
+            fallbackState = .available(version: version)
+        case .checking, .updating:
+            return
+        }
+        updateMenuState = .checking
+
+        do {
+            let result = try await brewUpdater.check()
+            applyCheckResult(result, userInitiated: userInitiated)
+        } catch {
+            updateMenuState = fallbackState
+            Log.app.error("Homebrew update check failed")
+            if userInitiated {
+                showAlert(
+                    title: "Could Not Check for Updates",
+                    message: error.localizedDescription,
+                    style: .warning
+                )
+            }
+        }
+    }
+
+    private func applyCheckResult(
+        _ result: BrewUpdater.CheckResult,
+        userInitiated: Bool
+    ) {
+        switch result {
+        case .unavailable:
+            updateMenuState = .idle
+            if userInitiated {
+                showAlert(
+                    title: "Homebrew Update Unavailable",
+                    message: "This copy of Tachyon is not managed by a Homebrew cask.",
+                    style: .informational
+                )
+            }
+        case .upToDate(let version):
+            updateMenuState = .idle
+            if userInitiated {
+                showAlert(
+                    title: "Tachyon Is Up to Date",
+                    message: "Homebrew reports version \(version) is installed.",
+                    style: .informational
+                )
+            }
+        case .updateAvailable(_, let latestVersion):
+            updateMenuState = .available(version: latestVersion)
+            if userInitiated {
+                offerUpdate(version: latestVersion)
+            } else {
+                notifyAboutUpdate(version: latestVersion)
+            }
+        }
+    }
+
+    private func notifyAboutUpdate(version: String) {
+        guard notifiedUpdateVersion != version else { return }
+        notifiedUpdateVersion = version
+        notify(
+            title: "Tachyon \(version) is available",
+            body: "Open the Tachyon menu to update with Homebrew."
+        )
+    }
+
+    private func offerUpdate(version: String) {
+        let alert = NSAlert()
+        alert.messageText = "Update Tachyon to \(version)?"
+        alert.informativeText = "Homebrew will verify and install the update. Tachyon may close while the app is replaced."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Update")
+        alert.addButton(withTitle: "Later")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        beginUpdate(version: version)
+    }
+
+    private func beginUpdate(version: String) {
+        updateMenuState = .updating(version: version)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await brewUpdater.update()
+                updateMenuState = .idle
+                showAlert(
+                    title: "Tachyon \(version) Is Installed",
+                    message: "Quit and reopen Tachyon to run the updated app.",
+                    style: .informational
+                )
+            } catch {
+                updateMenuState = .available(version: version)
+                Log.app.error("Homebrew update failed")
+                showAlert(
+                    title: "Could Not Update Tachyon",
+                    message: error.localizedDescription,
+                    style: .warning
+                )
+            }
+        }
+    }
+
+    private func showAlert(title: String, message: String, style: NSAlert.Style) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = style
+        alert.runModal()
     }
 
     /// 16pt template rendering of a provider mark for menu rows. Cached —
