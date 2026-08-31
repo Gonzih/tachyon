@@ -123,9 +123,17 @@ extra confirmation turn. Never infer release authorization from a build task.
    `gh release view v<version> --json assets`, and reread the published notes.
 6. **Cask** in `~/mydev/homebrew-tap/Casks/tachyon.rb`: fetch first and require
    a clean, non-diverged `main`; bump `version`, swap in the artifact SHA-256,
-   run `brew style Casks/tachyon.rb`, commit, and push. Then `brew update` and
-   run `brew audit --cask --strict gonzih/tap/tachyon` against the published
-   cask. Confirm the tap's local and remote commit hashes match.
+   run `brew style Casks/tachyon.rb`, commit, and push. Confirm the tap's local
+   and remote commit hashes match. For a normal release, run `brew update` and
+   `brew audit --cask --strict gonzih/tap/tachyon` against the published cask.
+   Homebrew no longer accepts a cask path for `brew audit`, so path-based style
+   is the only pre-push check.
+
+   For an explicitly requested end-to-end **in-app updater test**, do not run a
+   CLI metadata refresh or upgrade after publishing the cask. Preserve the old
+   installed receipt and tap checkout, leave the current development app
+   running, and let its Check for Updates action refresh metadata and invoke the
+   upgrade. Run the strict named audit only after that check refreshes the tap.
 7. **Verify the real user path:** use `brew list --cask --versions tachyon` as
    the installed-receipt check. Upgrade when installed; otherwise install the
    fully qualified cask. Kill before opening—`open` alone reuses an old process.
@@ -143,6 +151,8 @@ extra confirmation turn. Never infer release authorization from a build task.
    Expect the named version, a Homebrew receipt at that version, `accepted`,
    `source=Notarized Developer ID`, a valid staple, and the running executable
    under `/Applications` rather than `build/`. Record manual feedback too.
+   For an in-app updater test, the app performs the refresh/upgrade in place of
+   the CLI commands above; all post-install checks remain mandatory.
 8. The website's download button points at `releases/latest` — no site change
    per release. A file under `Providers/` does not by itself require deployment:
    compare the public provider roster/demo across the full release range. When
