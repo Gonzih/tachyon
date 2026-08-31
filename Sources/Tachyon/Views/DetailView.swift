@@ -148,8 +148,6 @@ private struct WindowRow: View {
     }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Oscillates while this window is pace-hot; drives the bar pulse.
-    @State private var pulsing = false
     private var theme: Theme { Theme(colorScheme) }
 
     var body: some View {
@@ -174,20 +172,17 @@ private struct WindowRow: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(theme.track(0.15))
                     if let percent = window.percentUsed {
-                        Capsule()
-                            .fill(UsageColor.band(pace.bandPercent ?? percent, theme: theme))
-                            .frame(width: geometry.size.width * percent / 100)
-                            // Pace-hot: same breathing as the ring and shim.
-                            .opacity(pulsing ? 0.4 : 1)
-                            .task(id: pace.isHot && !reduceMotion) {
-                                if pace.isHot && !reduceMotion {
-                                    withAnimation(
-                                        .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
-                                    ) { pulsing = true }
-                                } else {
-                                    withAnimation(.easeOut(duration: 0.2)) { pulsing = false }
-                                }
-                            }
+                        PulsingUsageBar(
+                            color: UsageColor.nsBand(
+                                pace.bandPercent ?? percent,
+                                darkAppearance: theme.isDark
+                            ),
+                            isPaceHot: pace.isHot && !reduceMotion
+                        )
+                            .frame(
+                                width: geometry.size.width * percent / 100,
+                                height: geometry.size.height
+                            )
                     }
                 }
             }

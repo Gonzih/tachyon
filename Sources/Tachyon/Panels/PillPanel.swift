@@ -15,6 +15,12 @@ enum OverlayPanelPolicy {
         .stationary,
         .fullScreenAuxiliary,
     ]
+
+    /// NSPanel defaults this to true. A Space handoff deactivates Tachyon, so
+    /// every independently ordered overlay must override that default or
+    /// AppKit removes it despite its cross-Space collection behavior. Keep the
+    /// policy here rather than relying on each new surface to remember it.
+    static let hidesOnDeactivate = false
 }
 
 /// Borderless, non-activating panel. Never takes focus, floats at status-bar
@@ -36,7 +42,7 @@ final class PillPanel: NSPanel {
         collectionBehavior = OverlayPanelPolicy.collectionBehavior
         isMovableByWindowBackground = false
         ignoresMouseEvents = false
-        hidesOnDeactivate = false
+        hidesOnDeactivate = OverlayPanelPolicy.hidesOnDeactivate
         animationBehavior = .none
     }
 

@@ -144,8 +144,6 @@ struct RingModule: View {
     let slot: ProviderSlot
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Oscillates while the ring window is pace-hot; drives the arc pulse.
-    @State private var pulsing = false
     private var theme: Theme { Theme(colorScheme) }
 
     private var percent: Double? { slot.ringPercent }
@@ -159,10 +157,9 @@ struct RingModule: View {
         return 1.0
     }
 
-    private var arcColor: Color {
-        guard let percent else { return .clear }
+    private func arcColor(for percent: Double) -> NSColor {
         // Pace-escalated band; the arc length and label stay at the raw percent.
-        return UsageColor.band(slot.ringBandPercent ?? percent, theme: theme)
+        UsageColor.nsBand(slot.ringBandPercent ?? percent, darkAppearance: theme.isDark)
     }
 
     /// Percent wins when both exist (a budgeted spend window) — same
@@ -181,27 +178,11 @@ struct RingModule: View {
                     .stroke(theme.track(0.2), lineWidth: PillMetrics.ringStroke)
 
                 if let percent {
-                    Circle()
-                        .trim(from: 0, to: max(0.0001, percent / 100))
-                        .stroke(
-                            arcColor,
-                            style: StrokeStyle(lineWidth: PillMetrics.ringStroke, lineCap: .round)
-                        )
-                        // Arc starts at 12 o'clock and sweeps clockwise.
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeOut(duration: 0.4), value: percent)
-                        // Pace-hot: the arc breathes — the color says how close,
-                        // the pulse says "faster than the clock".
-                        .opacity(pulsing ? 0.4 : 1)
-                        .task(id: slot.ringIsPaceHot && !reduceMotion) {
-                            if slot.ringIsPaceHot && !reduceMotion {
-                                withAnimation(
-                                    .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
-                                ) { pulsing = true }
-                            } else {
-                                withAnimation(.easeOut(duration: 0.2)) { pulsing = false }
-                            }
-                        }
+                    PulsingUsageArc(
+                        percent: percent,
+                        color: arcColor(for: percent),
+                        isPaceHot: slot.ringIsPaceHot && !reduceMotion
+                    )
                 }
 
                 GlyphView(glyph: slot.glyph, size: PillMetrics.glyphSize, color: theme.fg)

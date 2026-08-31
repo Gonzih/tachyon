@@ -155,6 +155,8 @@ final class PresenceTests: XCTestCase {
             XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
             XCTAssertFalse(panel.collectionBehavior.contains(.moveToActiveSpace))
             XCTAssertFalse(panel.collectionBehavior.contains(.fullScreenPrimary))
+            XCTAssertEqual(panel.hidesOnDeactivate, OverlayPanelPolicy.hidesOnDeactivate)
+            XCTAssertFalse(panel.hidesOnDeactivate)
         }
     }
 

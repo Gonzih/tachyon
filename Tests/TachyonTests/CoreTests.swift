@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import Tachyon
 
@@ -255,6 +256,38 @@ final class CoreTests: XCTestCase {
             label: "Window", percentUsed: 80, resetsAt: Date().addingTimeInterval(60))
         XCTAssertNil(unknown.projectedAtReset)
         XCTAssertEqual(unknown.bandPercent, 80)
+    }
+
+    @MainActor func testPaceArcUsesRenderServerPulseOnlyWhenHot() throws {
+        let arc = PaceArcView(frame: NSRect(x: 0, y: 0, width: 36, height: 36))
+        arc.layoutSubtreeIfNeeded()
+        arc.render(percent: 56, color: .systemOrange, isPaceHot: true, animated: false)
+
+        let layer = try XCTUnwrap(arc.layer?.sublayers?.first as? CAShapeLayer)
+        XCTAssertEqual(layer.strokeEnd, 0.56, accuracy: 0.0001)
+        let pulse = try XCTUnwrap(layer.animation(forKey: PaceArcView.pacePulseKey) as? CABasicAnimation)
+        XCTAssertEqual(pulse.keyPath, "opacity")
+        XCTAssertEqual(pulse.duration, 0.9, accuracy: 0.0001)
+        XCTAssertTrue(pulse.autoreverses)
+        XCTAssertEqual(pulse.repeatCount, .infinity)
+
+        arc.render(percent: 56, color: .systemOrange, isPaceHot: false, animated: true)
+        XCTAssertNil(layer.animation(forKey: PaceArcView.pacePulseKey))
+        XCTAssertEqual(layer.opacity, 1, accuracy: 0.0001)
+    }
+
+    @MainActor func testPaceBarUsesTheSharedRenderServerPulse() throws {
+        let bar = PaceBarView(frame: NSRect(x: 0, y: 0, width: 100, height: 4))
+        bar.layoutSubtreeIfNeeded()
+        bar.render(color: .systemRed, isPaceHot: true)
+
+        let layer = try XCTUnwrap(bar.layer?.sublayers?.first)
+        XCTAssertEqual(layer.cornerRadius, 2, accuracy: 0.0001)
+        XCTAssertNotNil(layer.animation(forKey: PacePulseLayer.animationKey))
+
+        bar.render(color: .systemRed, isPaceHot: false)
+        XCTAssertNil(layer.animation(forKey: PacePulseLayer.animationKey))
+        XCTAssertEqual(layer.opacity, 1, accuracy: 0.0001)
     }
 
     func testWorstFirstRule() {

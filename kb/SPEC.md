@@ -488,7 +488,7 @@ utilization, so they never refresh or estimate the percentage.
 | Grok mechanics unverified on authed machine | Ships experimental-flagged; state machine handles absence gracefully; verification = first contributor task. |
 | Rollout files huge | 256KB tail reads only. |
 | Overlap poll cost | 1Hz CGWindowList on one display ≈ negligible; stop polling entirely while Revealed. |
-| Fullscreen apps and Spaces | Same-display native full-frame geometry suppresses pill+shim while idle; ordinary maximized usable-frame windows retain the shim. Cross-Space presence remains a manual acceptance check after every panel-policy change; other displays are ignored. |
+| Fullscreen apps and Spaces | Same-display native full-frame geometry suppresses pill+shim while idle; ordinary maximized usable-frame windows retain the shim. Every independently ordered `NSPanel` uses the shared cross-Space collection policy **and** `hidesOnDeactivate = false`: macOS otherwise removes a panel during a Space handoff even though it can join all Spaces. Cross-Space presence remains a manual acceptance check after every panel-policy change; other displays are ignored. |
 | Ad-hoc signing + SMAppService | Gated + documented (§3.3). |
 
 ## 6. Acceptance criteria (v1 done =)
