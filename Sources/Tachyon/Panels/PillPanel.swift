@@ -6,8 +6,10 @@ import SwiftUI
 /// These flags are deliberately verbose and non-redundant. `canJoinAllSpaces`
 /// covers the user's Spaces, `canJoinAllApplications` lets a floating overlay
 /// follow another app's window set (including its full-screen Space), and
-/// `fullScreenAuxiliary` permits an intentional edge reveal there. Removing
-/// any one of them can strand a panel in the Space where it was first ordered.
+/// `fullScreenAuxiliary` keeps AppKit from stranding the panels during that
+/// handoff. The controller still orders every surface out while fullscreen is
+/// active. Removing any one of these flags can strand a panel in the Space
+/// where it was first ordered.
 enum OverlayPanelPolicy {
     static let collectionBehavior: NSWindow.CollectionBehavior = [
         .canJoinAllSpaces,
@@ -21,6 +23,13 @@ enum OverlayPanelPolicy {
     /// AppKit removes it despite its cross-Space collection behavior. Keep the
     /// policy here rather than relying on each new surface to remember it.
     static let hidesOnDeactivate = false
+
+    /// AppKit only treats an `NSPanel` as a persistent utility surface when
+    /// this is set explicitly. In an accessory app that distinction matters:
+    /// a non-floating panel can keep its global `isVisible` bit while its
+    /// WindowServer representation remains attached to the Space where it was
+    /// first ordered.
+    static let isFloatingPanel = true
 }
 
 /// Borderless, non-activating panel. Never takes focus, floats at status-bar
@@ -40,8 +49,10 @@ final class PillPanel: NSPanel {
         hasShadow = true
         level = .statusBar
         collectionBehavior = OverlayPanelPolicy.collectionBehavior
+        isFloatingPanel = OverlayPanelPolicy.isFloatingPanel
         isMovableByWindowBackground = false
         ignoresMouseEvents = false
+        acceptsMouseMovedEvents = true
         hidesOnDeactivate = OverlayPanelPolicy.hidesOnDeactivate
         animationBehavior = .none
     }

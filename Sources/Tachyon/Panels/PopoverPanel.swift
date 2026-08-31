@@ -44,7 +44,9 @@ final class PopoverPanel: NSPanel {
         hasShadow = true
         level = .statusBar
         collectionBehavior = OverlayPanelPolicy.collectionBehavior
+        isFloatingPanel = OverlayPanelPolicy.isFloatingPanel
         hidesOnDeactivate = OverlayPanelPolicy.hidesOnDeactivate
+        acceptsMouseMovedEvents = true
         animationBehavior = .none
         contentView = container
         container.onEnter = { [weak self] in self?.onPointerInside?(true) }

@@ -5,7 +5,8 @@ import SwiftUI
 /// revealed state machine.
 ///
 /// Timing constants are all distinct on purpose, so a stall is attributable:
-/// overlap hysteresis 300ms (in `OverlapMonitor`), hover dwell 150ms, reveal
+/// overlap polling 200ms / hysteresis 300ms (in `OverlapMonitor`), hover dwell
+/// 150ms, reveal
 /// collapse 500ms, popover open 300ms, popover exit grace 200ms.
 @MainActor
 final class EdgeController {
@@ -25,6 +26,13 @@ final class EdgeController {
         var keepsPillOffEdge: Bool {
             self == .shim || self == .suppressed
         }
+
+        /// Fullscreen suppression is absolute: only an ordinary overlapped
+        /// desktop exposes the edge hot zone. A suppressed movie must not be
+        /// revealable by an old dwell timer or by moving against the edge.
+        var acceptsEdgeReveal: Bool {
+            self == .shim
+        }
     }
 
     private struct ScreenContext: Equatable {
@@ -41,17 +49,22 @@ final class EdgeController {
     private static let hotZoneWidth: CGFloat = 12
     private static let slideOutDuration: TimeInterval = 0.18
     private static let slideInDuration: TimeInterval = 0.22
+    /// Space notifications arrive during the WindowServer animation. The first
+    /// pass resolves geometry; later passes finish the bounded compositor
+    /// handoff and repair active-Space panel membership when necessary.
+    private static let spaceSettlementDelays: [TimeInterval] = [0.35, 0.65, 0.65]
 
     private(set) var state: PresenceState = .docked
 
     private let model: UsageModel
-    private let pill: PillPanel
-    private let shim = ShimPanel()
-    private let popover = PopoverPanel()
+    private var pill: PillPanel
+    private var shim = ShimPanel()
+    private var popover = PopoverPanel()
     private let overlap = OverlapMonitor()
     private var hostView: TrackingHostView<PillView>
 
     private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
     private var screenObserver: NSObjectProtocol?
     private var spaceObserver: NSObjectProtocol?
 
@@ -59,6 +72,7 @@ final class EdgeController {
     private var collapseWorkItem: DispatchWorkItem?
     private var popoverOpenWorkItem: DispatchWorkItem?
     private var popoverCloseWorkItem: DispatchWorkItem?
+    private var spaceSettleWorkItem: DispatchWorkItem?
 
     /// Delayed interaction work is valid only for the provider/display surface
     /// that scheduled it. Animation completions additionally belong to one
@@ -82,13 +96,28 @@ final class EdgeController {
         self.hostView = TrackingHostView(rootView: PillView(slots: []))
         pill.contentView = hostView
 
-        hostView.onEnter = { [weak self] in self?.pillPointer(inside: true) }
-        hostView.onExit = { [weak self] in self?.pillPointer(inside: false) }
-        hostView.onMove = { [weak self] point in self?.pillPointerMoved(to: point) }
-        hostView.onClick = { [weak self] point in self?.pillClicked(at: point) }
-        hostView.onRightClick = { [weak self] event in
+        wireSurfaceCallbacks()
+
+        overlap.frameProvider = { [weak self] in
+            guard let self, self.moduleCount > 0, let screen = self.currentScreen else { return nil }
+            return (self.bodyFrame(on: screen), screen)
+        }
+        overlap.onChange = { [weak self] obstruction in self?.obstructionChanged(obstruction) }
+    }
+
+    /// Installs callbacks on the current panel instances. Keeping this wiring
+    /// in one place lets the bounded Space-repair path replace a WindowServer-
+    /// stranded surface without changing the controller's interaction state.
+    private func wireSurfaceCallbacks() {
+        let wiredHostView = hostView
+        wiredHostView.onEnter = { [weak self] in self?.pillPointer(inside: true) }
+        wiredHostView.onExit = { [weak self] in self?.pillPointer(inside: false) }
+        wiredHostView.onMove = { [weak self] point in self?.pillPointerMoved(to: point) }
+        wiredHostView.onClick = { [weak self] point in self?.pillClicked(at: point) }
+        wiredHostView.onRightClick = { [weak self, weak wiredHostView] event in
             guard let self else { return }
-            let point = self.hostView.convert(event.locationInWindow, from: nil)
+            guard let wiredHostView else { return }
+            let point = wiredHostView.convert(event.locationInWindow, from: nil)
             let id = PillMetrics.moduleIndex(atY: point.y, count: self.moduleCount)
                 .flatMap { self.visibleSlots[safe: $0]?.id }
             self.onPillRightClick?(id)
@@ -102,19 +131,13 @@ final class EdgeController {
             guard let self, self.pill.isVisible else { return [] }
             return [self.pill.frame]
         }
-
-        overlap.frameProvider = { [weak self] in
-            guard let self, self.moduleCount > 0, let screen = self.currentScreen else { return nil }
-            return (self.bodyFrame(on: screen), screen)
-        }
-        overlap.onChange = { [weak self] obstruction in self?.obstructionChanged(obstruction) }
     }
 
     // MARK: Lifecycle
 
     func start() {
         rebuild()
-        installGlobalMouseMonitor()
+        installMouseMonitors()
         installScreenObserver()
         overlap.start()
     }
@@ -124,7 +147,9 @@ final class EdgeController {
         transitionGeneration &+= 1
         overlap.stop()
         if let globalMouseMonitor { NSEvent.removeMonitor(globalMouseMonitor) }
+        if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
         globalMouseMonitor = nil
+        localMouseMonitor = nil
         if let screenObserver {
             NotificationCenter.default.removeObserver(screenObserver)
         }
@@ -133,6 +158,8 @@ final class EdgeController {
             NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver)
         }
         spaceObserver = nil
+        spaceSettleWorkItem?.cancel()
+        spaceSettleWorkItem = nil
         cancelAllTimers()
         popover.dismiss()
         pill.orderOut(nil)
@@ -145,7 +172,7 @@ final class EdgeController {
 
     /// Re-reads the model and repositions everything. Cheap enough to call on
     /// every snapshot.
-    func rebuild() {
+    func rebuild(refreshInteractionSurface: Bool = false) {
         let slots = visibleSlots
         let providerIDs = slots.map(\.id)
         let providersChanged = providerIDs != renderedProviderIDs
@@ -164,6 +191,7 @@ final class EdgeController {
         renderedScreenContext = screenContext
         let surfaceChanged = providersChanged || screenChanged
         if surfaceChanged {
+            if screenChanged { overlap.resetFullScreenContinuation() }
             invalidateSurfaceWork(clearPointerState: screenChanged)
             adoptCurrentObstructionIfIdle()
         }
@@ -171,6 +199,7 @@ final class EdgeController {
         shim.position(on: screen, moduleCount: slots.count)
         applyFrame(for: state, on: screen, animated: false)
         placePanels(for: state)
+        if refreshInteractionSurface { hostView.updateTrackingAreas() }
 
         // Keep an open popover attached to the same visible ring. Re-presenting
         // also remeasures row-count changes and fixes the tail after reordering.
@@ -181,12 +210,11 @@ final class EdgeController {
                 closePopover()
             }
         }
-        if surfaceChanged { reconcilePointerAfterRebuild() }
+        if surfaceChanged || refreshInteractionSurface { reconcilePointerAfterRebuild() }
         overlap.poke()
     }
 
     private func hideUnavailableSurfaces() {
-        let wasRevealed = state == .revealed
         surfaceGeneration &+= 1
         transitionGeneration &+= 1
         cancelAllTimers()
@@ -196,7 +224,6 @@ final class EdgeController {
         clearPointerState()
         state = .docked
         renderedScreenContext = nil
-        if wasRevealed { overlap.resume() }
     }
 
     private func invalidateSurfaceWork(clearPointerState shouldClearPointers: Bool) {
@@ -220,7 +247,6 @@ final class EdgeController {
         let previous = state
         state = next
         Log.presence.debug("State \(String(describing: previous), privacy: .public) → \(String(describing: next), privacy: .public) (fresh context)")
-        if previous == .revealed { overlap.resume() }
     }
 
     private func clearPointerState() {
@@ -234,14 +260,7 @@ final class EdgeController {
     /// another display or changes height under a stationary pointer. Rebuild
     /// the flags from actual panel geometry, then resume the normal exit path.
     private func reconcilePointerAfterRebuild() {
-        let point = NSEvent.mouseLocation
-        pointerInPill = pill.isVisible && pill.frame.contains(point)
-        pointerInPopover = popover.isVisible && popover.frame.contains(point)
-        if state == .revealed {
-            revealedPointerMoved(point)
-        } else if !pointerInPill, !pointerInPopover {
-            scheduleUnionExit()
-        }
+        pointerMoved(NSEvent.mouseLocation)
     }
 
     // MARK: Geometry
@@ -307,14 +326,14 @@ final class EdgeController {
         guard moduleCount > 0 else { return }
         switch state {
         case .docked, .revealed:
-            shim.orderOut(nil)
-            pill.orderFrontRegardless()
+            if shim.isVisible { shim.orderOut(nil) }
+            if !pill.isVisible { pill.orderFrontRegardless() }
         case .shim:
-            pill.orderOut(nil)
-            shim.orderFrontRegardless()
+            if pill.isVisible { pill.orderOut(nil) }
+            if !shim.isVisible { shim.orderFrontRegardless() }
         case .suppressed:
-            pill.orderOut(nil)
-            shim.orderOut(nil)
+            if pill.isVisible { pill.orderOut(nil) }
+            if shim.isVisible { shim.orderOut(nil) }
         }
     }
 
@@ -333,11 +352,13 @@ final class EdgeController {
             enterOffEdgeState(.shim, from: previous, on: screen, generation: generation)
 
         case .suppressed:
+            cancelAllTimers()
+            clearPointerState()
             enterOffEdgeState(.suppressed, from: previous, on: screen, generation: generation)
 
         case .revealed:
-            // Nothing to decide while revealed — stop the 1Hz poll entirely.
-            overlap.pause()
+            // Ordinary obstruction changes never interrupt an interaction,
+            // but fullscreen must still win while the pill or detail is open.
             shim.orderOut(nil)
             pill.setFrame(hiddenFrame(on: screen), display: false)
             pill.orderFrontRegardless()
@@ -355,7 +376,6 @@ final class EdgeController {
             }
 
         case .docked:
-            overlap.resume()
             pill.orderFrontRegardless()
             if previous.keepsPillOffEdge {
                 // Slide in from off-screen; keep the shim up until the pill
@@ -390,7 +410,6 @@ final class EdgeController {
         shim.position(on: screen, moduleCount: moduleCount)
         popover.dismiss()
         pointerInPopover = false
-        overlap.resume()
 
         if previous.keepsPillOffEdge {
             pill.setFrame(hiddenFrame(on: screen), display: false)
@@ -422,9 +441,8 @@ final class EdgeController {
 
     /// Where a collapse from `.revealed` should land.
     ///
-    /// The monitor is paused while revealed, so its published classification is
-    /// frozen. Re-read it: the user may have moved, resized, or closed the
-    /// covering window, and §3.0 says collapse follows current reality.
+    /// Re-read synchronously: the latest debounced classification may still be
+    /// pending after a move/resize, and collapse follows current reality.
     private func collapseTarget() -> PresenceState {
         Self.restingState(for: overlap.evaluateNow())
     }
@@ -445,7 +463,20 @@ final class EdgeController {
         from state: PresenceState,
         interactionActive: Bool
     ) -> PresenceState? {
+        if obstruction == .fullScreen { return .suppressed }
         guard state != .revealed, !interactionActive else { return nil }
+        return restingState(for: obstruction)
+    }
+
+    /// Space changes preserve an explicit reveal on ordinary desktops, but a
+    /// destination fullscreen Space always wins so no stale pill covers media.
+    static func stateAfterSpaceChange(
+        from state: PresenceState,
+        obstruction: WindowObstruction,
+        interactionActive: Bool
+    ) -> PresenceState {
+        if obstruction == .fullScreen { return .suppressed }
+        if state == .revealed || interactionActive { return state }
         return restingState(for: obstruction)
     }
 
@@ -476,12 +507,21 @@ final class EdgeController {
 
     // MARK: Pointer input
 
-    /// Passive global monitor — it observes, never consumes.
-    private func installGlobalMouseMonitor() {
-        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
+    /// Global monitors see events delivered to other apps; local monitors see
+    /// events delivered to Tachyon. Installing both closes the dead zone a
+    /// cross-Space panel clone can otherwise create between those contracts.
+    private func installMouseMonitors() {
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.globalMouseMoved(NSEvent.mouseLocation)
+                self?.pointerMoved(NSEvent.mouseLocation)
             }
+        }
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            MainActor.assumeIsolated {
+                self?.pointerMoved(NSEvent.mouseLocation)
+            }
+            return event
         }
     }
 
@@ -503,20 +543,165 @@ final class EdgeController {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                Log.presence.info("Active Space changed — reasserting overlay")
-                // A Space switch does not change NSScreen geometry, so the
-                // ordinary screen cache would call this an unchanged surface.
-                // Force one fresh obstruction read before any panel is ordered;
-                // this prevents both a flash over full-screen content and a
-                // panel remaining affiliated with the Space it just left.
-                self.renderedScreenContext = nil
-                self.rebuild()
+                Log.presence.info("Active Space changed — reconciling overlay")
+                self.activeSpaceChanged()
             }
         }
     }
 
-    private func globalMouseMoved(_ point: NSPoint) {
+    private func activeSpaceChanged() {
+        let wasInteracting = isInteracting
+        surfaceGeneration &+= 1
+        transitionGeneration &+= 1
+        cancelAllTimers()
+        clearPointerState()
+        overlap.prepareForSpaceTransition()
+
+        let observed = overlap.evaluateNow()
+        adoptSpaceObstruction(observed, interactionActive: wasInteracting)
+        rebuild(refreshInteractionSurface: true)
+        scheduleSpaceSettlementCheck()
+    }
+
+    /// The active-Space notification can precede final WindowServer geometry.
+    /// Adopt every settled result before reconciling the panels:
+    /// `evaluateNow()` updates the monitor, so ignoring an ordinary recovery
+    /// here would prevent a later change callback from restoring it.
+    private func scheduleSpaceSettlementCheck(attempt: Int = 0) {
+        if attempt == 0 { spaceSettleWorkItem?.cancel() }
+        guard let delay = Self.spaceSettlementDelays[safe: attempt] else { return }
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.spaceSettleWorkItem = nil
+            let interactionActive = self.isInteracting
+            let isFinalAttempt = attempt + 1 == Self.spaceSettlementDelays.count
+            let observed = isFinalAttempt
+                ? self.overlap.evaluateSettledSpaceNow()
+                : self.overlap.evaluateNow()
+            self.adoptSpaceObstruction(observed, interactionActive: interactionActive)
+            self.rebuild(refreshInteractionSurface: true)
+            var panelsAreReady = self.expectedPanelsAreOnActiveSpace
+            let repaired = Self.shouldRepairSpaceSurfaces(
+                settlementAttempt: attempt,
+                panelsAreReady: panelsAreReady
+            )
+            if repaired {
+                self.replaceStrandedOverlaySurfaces()
+                panelsAreReady = self.expectedPanelsAreOnActiveSpace
+            }
+            Log.presence.debug("Space settle pass \(attempt, privacy: .public): state=\(String(describing: self.state), privacy: .public), pill visible=\(self.pill.isVisible, privacy: .public)/active=\(self.pill.isOnActiveSpace, privacy: .public), shim visible=\(self.shim.isVisible, privacy: .public)/active=\(self.shim.isOnActiveSpace, privacy: .public), repaired=\(repaired, privacy: .public), ready=\(panelsAreReady, privacy: .public)")
+            let hasAnotherSettlementPass = attempt + 1 < Self.spaceSettlementDelays.count
+            if isFinalAttempt, !panelsAreReady {
+                Log.presence.error("Overlay remained outside the active Space after bounded repair")
+            }
+            if hasAnotherSettlementPass {
+                self.scheduleSpaceSettlementCheck(attempt: attempt + 1)
+            }
+        }
+        spaceSettleWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    private var expectedPanelsAreOnActiveSpace: Bool {
+        guard moduleCount > 0 else { return true }
+        let primaryIsReady = switch state {
+        case .docked, .revealed: pill.isVisible && pill.isOnActiveSpace
+        case .shim: shim.isVisible && shim.isOnActiveSpace
+        case .suppressed: true
+        }
+        return primaryIsReady && (!popover.isVisible || popover.isOnActiveSpace)
+    }
+
+    /// The first 350ms pass is late enough for the standard Space animation,
+    /// while leaving two later passes to verify a replacement. Never churn
+    /// panels repeatedly: the normal all-Spaces clones are retained whenever
+    /// AppKit reports them ready.
+    static func shouldRepairSpaceSurfaces(
+        settlementAttempt: Int,
+        panelsAreReady: Bool
+    ) -> Bool {
+        settlementAttempt == 0 && !panelsAreReady
+    }
+
+    /// A visible window can still report `isOnActiveSpace == false`; at that
+    /// point its WindowServer clone is attached elsewhere and no amount of
+    /// tracking-area refresh can make it interactive here. Replace all three
+    /// related surfaces as one unit so their ordering and hover union stay in
+    /// sync, preserving an open/pinned detail target and the revealed state.
+    private func replaceStrandedOverlaySurfaces() {
+        let preservedTargetID = popover.targetProviderID
+        let preservedPinnedState = popover.isPinned
+        let oldPill = pill
+        let oldShim = shim
+        let oldPopover = popover
+        let oldHostView = hostView
+
+        surfaceGeneration &+= 1
+        transitionGeneration &+= 1
+        cancelAllTimers()
+        clearPointerState()
+
+        oldHostView.onEnter = nil
+        oldHostView.onExit = nil
+        oldHostView.onMove = nil
+        oldHostView.onClick = nil
+        oldHostView.onRightClick = nil
+        oldPopover.onPointerInside = nil
+        oldPopover.onDismiss = nil
+        oldPopover.excludedFrames = nil
+        oldPopover.dismiss()
+        oldPill.orderOut(nil)
+        oldShim.orderOut(nil)
+
+        let replacementPill = PillPanel(
+            contentRect: NSRect(x: 0, y: 0, width: PillMetrics.width, height: 88)
+        )
+        let replacementHostView = TrackingHostView(rootView: PillView(slots: []))
+        replacementPill.contentView = replacementHostView
+        pill = replacementPill
+        hostView = replacementHostView
+        shim = ShimPanel()
+        popover = PopoverPanel()
+        wireSurfaceCallbacks()
+
+        rebuild()
+        if state == .revealed,
+           let preservedTargetID,
+           let index = visibleSlots.firstIndex(where: { $0.id == preservedTargetID }) {
+            presentPopover(
+                for: visibleSlots[index],
+                index: index,
+                pinned: preservedPinnedState
+            )
+        }
+        hostView.updateTrackingAreas()
+        reconcilePointerAfterRebuild()
+        Log.presence.info("Replaced overlay surfaces stranded outside the active Space")
+    }
+
+    private func adoptSpaceObstruction(
+        _ obstruction: WindowObstruction,
+        interactionActive: Bool
+    ) {
+        let previous = state
+        let next = Self.stateAfterSpaceChange(
+            from: previous,
+            obstruction: obstruction,
+            interactionActive: interactionActive
+        )
+        state = next
+        if next == .suppressed {
+            popover.dismiss()
+            pointerInPopover = false
+        }
+        if next != previous {
+            Log.presence.debug("State \(String(describing: previous), privacy: .public) → \(String(describing: next), privacy: .public) (Space change)")
+        }
+    }
+
+    private func pointerMoved(_ point: NSPoint) {
         guard moduleCount > 0, let screen = currentScreen else { return }
+        synchronizePanelPointers(at: point)
 
         if state == .revealed {
             // The pill can slide out under a pointer that never crosses its
@@ -525,10 +710,36 @@ final class EdgeController {
             revealedPointerMoved(point)
             return
         }
-        guard state.keepsPillOffEdge else {
-            // Docked: the pill's own tracking area is authoritative.
+        guard state.acceptsEdgeReveal else {
+            dwellWorkItem?.cancel()
+            dwellWorkItem = nil
             return
         }
+        hiddenPointerMoved(point, on: screen)
+    }
+
+    /// Geometry is the shared truth for tracking-area, local-monitor, and
+    /// global-monitor input. This remains valid when WindowServer reuses a
+    /// visible panel in another Space but fails to migrate its tracking area.
+    private func synchronizePanelPointers(at point: NSPoint) {
+        if pill.isVisible, let localPoint = Self.pillLocalPoint(at: point, in: pill.frame) {
+            pillPointerMoved(to: localPoint)
+        } else if pointerInPill {
+            pillPointer(inside: false)
+        }
+
+        let isInPopover = popover.isVisible && popover.frame.contains(point)
+        if isInPopover != pointerInPopover {
+            popoverPointer(inside: isInPopover)
+        }
+    }
+
+    static func pillLocalPoint(at point: NSPoint, in frame: NSRect) -> NSPoint? {
+        guard frame.contains(point) else { return nil }
+        return NSPoint(x: point.x - frame.minX, y: frame.maxY - point.y)
+    }
+
+    private func hiddenPointerMoved(_ point: NSPoint, on screen: NSScreen) {
         let band = bodyFrame(on: screen)
         let visible = screen.visibleFrame
         let hotZone = NSRect(
@@ -545,7 +756,7 @@ final class EdgeController {
                 guard let self else { return }
                 self.dwellWorkItem = nil
                 guard self.surfaceGeneration == generation,
-                      self.state.keepsPillOffEdge,
+                      self.state.acceptsEdgeReveal,
                       self.moduleCount > 0
                 else { return }
                 self.transition(to: .revealed)

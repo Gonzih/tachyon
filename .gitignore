@@ -2,3 +2,10 @@
 build/
 .swiftpm/
 .DS_Store
+
+# GitKB
+.kb/.cache/
+.kb/store/
+.kb/workspace/
+.kb/workspaces/
+.kb/config.toml.identity.lock

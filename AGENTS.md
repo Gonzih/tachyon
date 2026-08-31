@@ -26,8 +26,9 @@ merges them.
     LSUIElement, an invisible `NSApp.mainMenu` routes ⌘,/⌘W/⌘Q.
 - `Tests/TachyonTests/` — XCTest suite. `swift test` must stay green; CI
   (`.github/workflows/ci.yml`) runs build+test on every push/PR.
-- `kb/SPEC.md` — authoritative design spec (update it when behavior changes on
-  purpose). `kb/RESEARCH.md` — per-provider endpoint/file mechanics research.
+- GitKB `specs/tachyon` — authoritative design spec (update it when behavior
+  changes on purpose; materialized under `.kb/workspaces/<name>/`).
+  `kb/RESEARCH.md` — per-provider endpoint/file mechanics research.
 - `docs/` — the website (tachyon.maksim.sh), a Cloudflare Worker serving
   static assets. Deploy: `cd docs && wrangler deploy`. Nothing else deploys
   the site. The demo is hand-built HTML/CSS/JS mirroring the app; keep it

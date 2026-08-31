@@ -24,6 +24,7 @@ final class ShimPanel: NSPanel {
         hasShadow = false
         level = .statusBar
         collectionBehavior = OverlayPanelPolicy.collectionBehavior
+        isFloatingPanel = OverlayPanelPolicy.isFloatingPanel
         hidesOnDeactivate = OverlayPanelPolicy.hidesOnDeactivate
         // The shim is decoration: the 12pt hot zone handles reveal, so the panel
         // itself must never eat clicks meant for the window underneath.
