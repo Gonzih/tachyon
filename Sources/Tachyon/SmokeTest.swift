@@ -10,13 +10,29 @@ enum SmokeTest {
     static func runIfRequested() -> Bool {
         guard CommandLine.arguments.contains("--smoke") else { return false }
 
+        waitForAsyncOperation {
+            await run()
+        }
+        return true
+    }
+
+    /// The app entry point is synchronous and runs on the main thread. Blocking
+    /// it on a semaphore deadlocks any provider that legitimately hops to
+    /// `MainActor` for an AppKit lookup (Codex Desktop does this through
+    /// `NSWorkspace`). Pump the main run loop while the diagnostic runs so
+    /// those hops can complete without changing normal app startup.
+    static func waitForAsyncOperation(
+        _ operation: @escaping @Sendable () async -> Void
+    ) {
+        precondition(Thread.isMainThread)
         let done = DispatchSemaphore(value: 0)
         Task {
-            await run()
+            await operation()
             done.signal()
         }
-        done.wait()
-        return true
+        while done.wait(timeout: .now()) == .timedOut {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        }
     }
 
     private static func run() async {
