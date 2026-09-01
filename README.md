@@ -99,8 +99,9 @@ command that fixes it.
 
 Ring colors: green < 50%, yellow from 50, orange from 70, red from 90. Known
 provider-enforced windows also show their projected pace; a pulse means the
-current pool is on pace to hit its wall (or already there), which can mean slow
-down or move the next task to another source. Personal spend budgets still
+current pool is on pace to hit its wall, which can mean slow down or move the
+next task to another source. At 100%, the pulse stops and the ring stays red.
+Personal spend budgets still
 color the ring, but never pulse or claim a provider limit was reached. Hover a
 ring for per-window bars and reset times; click to pin.
 

@@ -136,6 +136,17 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(hotPresentation.bandPercent, 70)
         XCTAssertTrue(hotPresentation.isHot)
 
+        let reached = UsageWindow(
+            label: "Reached",
+            percentUsed: 100,
+            resetsAt: now.addingTimeInterval(500),
+            windowSeconds: 1_000
+        )
+        let reachedPresentation = PacePresentation(window: reached, isStale: false)
+        XCTAssertEqual(reachedPresentation.caption, "Limit reached")
+        XCTAssertEqual(reachedPresentation.bandPercent, 100)
+        XCTAssertFalse(reachedPresentation.isHot)
+
         let early = UsageWindow(
             label: "Early", percentUsed: 13,
             resetsAt: now.addingTimeInterval(589_200),
@@ -235,11 +246,13 @@ final class CoreTests: XCTestCase {
             resetsAt: Date().addingTimeInterval(302_400), windowSeconds: 604_800)
         XCTAssertEqual(underPace.bandPercent, 30)
 
-        // Exhausted remains hot: switching accounts is still a useful action.
+        // Exhausted stays solid red: pace has already become a reached limit.
         let dead = UsageWindow(
             label: "Weekly", percentUsed: 100,
             resetsAt: Date().addingTimeInterval(302_400), windowSeconds: 604_800)
-        XCTAssertTrue(dead.isPaceHot)
+        XCTAssertFalse(dead.isPaceHot)
+        XCTAssertEqual(dead.bandPercent, 100)
+        XCTAssertEqual(PaceFormat.caption(for: dead), "Limit reached")
     }
 
     func testPaceNeedsSignal() {

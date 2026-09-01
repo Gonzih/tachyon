@@ -268,8 +268,8 @@ If `elapsed_fraction ≥ 0.1` (earlier projections are wild) and
 burn rate — the color lifts to the next band's floor: green→yellow,
 yellow→orange, orange→red. One band, never more: pace is a warning, not a
 measurement. Provider-enforced pace-hot windows also *pulse* (ring, shim,
-popover bar). A hard window at 100% stays hot: in a multi-account capacity
-tool, switching to another pool is still an available decision. A
+popover bar). At 100%, the warning has become a reached limit: the pulse stops
+and the meter stays solid red. A
 user-authored spend budget carries `spendUSD`, so it may use percentage colors
 but never pace-escalates, pulses, or says `Limit reached`.
 

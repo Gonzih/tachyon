@@ -138,15 +138,13 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
     }
 
     /// On pace to exhaust before the reset. Drives band escalation and the
-    /// pulse on ring, shim, and popover bars. A fully exhausted account stays
-    /// hot because moving work to another available source is still a useful
-    /// decision in a capacity-optimization tool.
+    /// pulse on ring, shim, and popover bars while there is still capacity to
+    /// manage. A reached limit stays solid red instead of continuing to pulse.
     var isPaceHot: Bool {
         // A user-authored spend budget is a planning aid, not a provider hard
         // wall. It may turn red at 100%, but must never pulse or claim that a
         // service limit was reached.
-        guard spendUSD == nil, let percent = percentUsed else { return false }
-        if percent >= 100 { return true }
+        guard spendUSD == nil, let percent = percentUsed, percent < 100 else { return false }
         return (projectedAtReset ?? 0) >= 100
     }
 
