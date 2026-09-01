@@ -26,6 +26,7 @@ final class GrokBotProviderTests: XCTestCase {
         XCTAssertEqual(bot?.shortName, "Grok")
         XCTAssertEqual(bot?.sourceLabel, "Bot")
         XCTAssertEqual(bot?.glyph, .grokBot)
+        XCTAssertNil(bot?.about)
     }
 
     func testDecryptsRuntimeGeneratedSyntheticSafeStorageEnvelope() {

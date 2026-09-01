@@ -64,7 +64,7 @@ enum SmokeTest {
                     let reset = ResetFormat.resetText(window.resetsAt).map { "  (\($0))" } ?? ""
                     print("    · \(window.label): \(meterText(window))\(reset)")
                 }
-                if let detail = snapshot.detail { print("  plan: \(detail)") }
+                if let detail = snapshot.detail { print("  detail: \(detail)") }
             case .authError(let guidance):
                 print("  state: auth error — \(guidance)")
             case .unavailable:

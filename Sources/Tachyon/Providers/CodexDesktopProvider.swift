@@ -17,8 +17,6 @@ actor CodexDesktopProvider: UsageProvider {
     nonisolated let sourceLabel: String? = "Desktop"
     nonisolated let glyph = ProviderGlyph.codex
     nonisolated let pollInterval: TimeInterval = 60
-    nonisolated let about = "Recent ChatGPT plan usage observed from Codex Desktop."
-
     private static let guidance = "Run a turn in Codex Desktop"
     /// FSEvents normally delivers a completed turn within seconds. If no newer
     /// event arrives by the next scheduled poll, the observation is no longer

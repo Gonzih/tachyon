@@ -13,13 +13,11 @@ actor OmpProvider: UsageProvider {
     /// Local database read — cheap, but nothing moves fast.
     nonisolated let pollInterval: TimeInterval = 120
     nonisolated let category: ProviderCategory = .openHarness
-    nonisolated let about: String? =
-        "Quota windows and per-turn cost from Oh My Pi\u{2019}s own database — covers every account it routes."
     nonisolated let settings: [ProviderSetting] = [
         ProviderSetting(
             key: "budget.monthly",
             title: "Monthly budget",
-            help: "Colors the ring against a spend ceiling. Leave empty for a plain dollar readout.",
+            help: "Optional spend ceiling for ring color.",
             kind: .money(defaultValue: nil)
         ),
     ]

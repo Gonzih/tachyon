@@ -4,6 +4,17 @@ import XCTest
 
 /// Core value types: meters, formatting, geometry, colors, the SVG parser.
 final class CoreTests: XCTestCase {
+    func testProviderDescriptionsOnlyExplainNonObviousMeters() {
+        let descriptions = Dictionary(uniqueKeysWithValues: ProviderRegistry.all.compactMap {
+            provider -> (String, String)? in
+            provider.about.map { (provider.id, $0) }
+        })
+
+        XCTAssertEqual(descriptions, [
+            "ollama": "Request counts only; Ollama has no quota API.",
+        ])
+    }
+
     func testHTTPHeadersRejectControlUnicodeAndOversizedValues() {
         XCTAssertTrue(Usage.headersAreSafe([
             "Authorization": "Bearer synthetic-token_123",

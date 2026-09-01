@@ -13,7 +13,6 @@ actor GrokBotProvider: UsageProvider {
     nonisolated let shortName = "Grok"
     nonisolated let sourceLabel: String? = "Bot"
     nonisolated let glyph = ProviderGlyph.grokBot
-    nonisolated let about: String? = "Grok Bot's separate provider-reported allowance."
     nonisolated let pollInterval: TimeInterval = 120
 
     private static let usageURL = URL(

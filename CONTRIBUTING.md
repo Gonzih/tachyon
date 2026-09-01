@@ -46,9 +46,9 @@ the top). Re-saving the same non-empty secret is intentionally a no-op, so its
 revision and any credential-scoped baseline stay intact. Optional protocol
 blocks:
 
-- **`about`** — one line shown on hover in the menu and in the Settings pane.
-  Skip it when the name says everything (Claude, Codex); use it when it
-  doesn't (a corporate account, an aggregator, a proxy).
+- **`about`** — one caveat shown on hover and in Settings. Omit ordinary
+  summaries. Add it only when a user could otherwise misread the meter, such
+  as a request counter that is not a quota.
 - **`watchPaths` + `fileChanged(_:)`** — declare files/directories and the app
   owns the FSEvents machinery: watching runs only while your provider is
   enabled, `fileChanged` receives the triggering path (invalidate caches
@@ -212,7 +212,7 @@ UsageSnapshot(
     primary: primary,      // the ring — pick the window the user is about to hit
     windows: windows,      // popover rows, primary first
     asOf: Date(),
-    detail: "Pro plan"     // footer: plan or tier, or nil
+    detail: "Pro"          // concise tier or actionable notice, or nil
 )
 ```
 

@@ -346,7 +346,7 @@ enum CodexAppServerProbe {
         let resetCredits = result["rateLimitResetCredits"]
         if resetCredits.exists, let count = safeCount(resetCredits["availableCount"]) {
             allWindows.append(UsageWindow(
-                label: "Full resets available",
+                label: "Full resets",
                 count: count,
                 unit: count == 1 ? "reset" : "resets",
                 resetsAt: nil))
@@ -397,7 +397,7 @@ enum CodexAppServerProbe {
                 .map { $0.prefix(1).uppercased() + $0.dropFirst() }
                 .joined(separator: " ")
         }
-        return "\(title) plan"
+        return title
     }
 
     private static func windows(from snapshot: JSONValue) -> [UsageWindow] {
@@ -435,7 +435,7 @@ enum CodexAppServerProbe {
         }
         guard let latest = values.max(by: { $0.0 < $1.0 }) else { return nil }
         return UsageWindow(
-            label: "Tokens · \(latest.0)",
+            label: latest.0,
             count: latest.1,
             unit: "tokens",
             resetsAt: nil)

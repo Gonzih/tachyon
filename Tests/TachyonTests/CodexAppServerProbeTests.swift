@@ -71,11 +71,11 @@ final class CodexAppServerProbeTests: XCTestCase {
             asOf: now))
         XCTAssertEqual(snapshot.primary.label, "Busy · Current session")
         XCTAssertEqual(snapshot.primary.percentUsed, 86)
-        XCTAssertEqual(snapshot.detail, "Business plan")
+        XCTAssertEqual(snapshot.detail, "Business")
         XCTAssertEqual(snapshot.asOf, now)
         XCTAssertFalse(snapshot.windows.contains { $0.label.contains("Untouched") })
-        XCTAssertEqual(snapshot.windows.first { $0.label == "Full resets available" }?.count, 2)
-        XCTAssertEqual(snapshot.windows.first { $0.label == "Tokens · 2026-08-30" }?.count, 3400)
+        XCTAssertEqual(snapshot.windows.first { $0.label == "Full resets" }?.count, 2)
+        XCTAssertEqual(snapshot.windows.first { $0.label == "2026-08-30" }?.count, 3400)
     }
 
     func testExternalAuthProbeIsIsolatedAndRejectsRefresh() async throws {
@@ -131,8 +131,8 @@ final class CodexAppServerProbeTests: XCTestCase {
             environment: environment)
         XCTAssertEqual(snapshot.primary.percentUsed, 44)
         XCTAssertEqual(snapshot.primary.windowSeconds, 18000)
-        XCTAssertEqual(snapshot.detail, "Pro plan")
-        XCTAssertEqual(snapshot.windows.first { $0.label == "Tokens · 2026-08-30" }?.count, 4321)
+        XCTAssertEqual(snapshot.detail, "Pro")
+        XCTAssertEqual(snapshot.windows.first { $0.label == "2026-08-30" }?.count, 4321)
     }
 
     func testDesktopResolverPrefersBundleIdentifierThenKnownApplicationPaths() throws {
@@ -261,11 +261,11 @@ final class CodexAppServerProbeTests: XCTestCase {
     }
 
     func testPlanFormattingHandlesKnownAndUnknownValues() {
-        XCTAssertEqual(CodexAppServerProbe.formatPlan("edu_plus"), "Edu Plus plan")
+        XCTAssertEqual(CodexAppServerProbe.formatPlan("edu_plus"), "Edu Plus")
         XCTAssertEqual(
             CodexAppServerProbe.formatPlan("self_serve_business_prolite"),
-            "Business Pro Lite plan")
-        XCTAssertEqual(CodexAppServerProbe.formatPlan("future_super_tier"), "Future Super Tier plan")
+            "Business Pro Lite")
+        XCTAssertEqual(CodexAppServerProbe.formatPlan("future_super_tier"), "Future Super Tier")
         XCTAssertNil(CodexAppServerProbe.formatPlan("  "))
     }
 

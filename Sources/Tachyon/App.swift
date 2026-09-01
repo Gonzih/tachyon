@@ -234,14 +234,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.representedObject = slot.id
             item.state = slot.enabled ? .on : .off
             item.image = Self.menuGlyph(slot.glyph)
-            item.toolTip = slot.about ?? (slot.enabled ? nil : "Enable to detect and read this provider")
+            item.toolTip = slot.about
             menu.addItem(item)
         }
 
         menu.addItem(.separator())
         let hint = NSMenuItem(title: "Add Your Provider…", action: #selector(copyHarnessPrompt), keyEquivalent: "")
         hint.target = self
-        hint.toolTip = "Copies a prompt to paste into your coding agent; it implements the provider itself"
+        hint.toolTip = "Copies the provider prompt"
         menu.addItem(hint)
 
         menu.addItem(.separator())

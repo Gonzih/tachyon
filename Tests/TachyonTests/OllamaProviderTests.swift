@@ -44,7 +44,7 @@ final class OllamaProviderTests: XCTestCase {
     }
 
     func testCountWindowMeter() {
-        let window = UsageWindow(label: "Requests · today", count: 42, unit: "requests", resetsAt: nil)
+        let window = UsageWindow(label: "Today", count: 42, unit: "requests", resetsAt: nil)
         XCTAssertNil(window.percentUsed)
         XCTAssertNil(window.spendUSD)
         XCTAssertEqual(window.count, 42)

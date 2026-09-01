@@ -20,8 +20,6 @@ actor CodexProvider: UsageProvider {
     nonisolated let sourceLabel: String? = "CLI"
     nonisolated let glyph = ProviderGlyph.codex
     nonisolated let pollInterval: TimeInterval = 60
-    nonisolated let about = "ChatGPT plan usage for the locally signed-in Codex CLI account."
-
     private static let defaultUsageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
     private static let authGuidance = "Run `codex login`"
     private static let maxRolloutFiles = 5

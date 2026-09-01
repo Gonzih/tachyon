@@ -40,7 +40,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.primary.label, "Weekly")
         XCTAssertEqual(snapshot.primary.percentUsed, 73)
         XCTAssertEqual(snapshot.primary.windowSeconds, 604800)
-        XCTAssertEqual(snapshot.detail, "Business plan")
+        XCTAssertEqual(snapshot.detail, "Business")
     }
 
     func testDirectDecoderFeedsGenericPaceProjection() throws {
@@ -221,7 +221,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.primary.percentUsed, 84)
         XCTAssertEqual(snapshot.primary.windowSeconds, 604800)
         XCTAssertEqual(snapshot.windows.first { $0.label == "Current session" }?.windowSeconds, 18000)
-        XCTAssertEqual(snapshot.detail, "Business Pro Lite plan")
+        XCTAssertEqual(snapshot.detail, "Business Pro Lite")
         XCTAssertEqual(
             snapshot.asOf,
             ISO8601DateFormatter().date(from: "2026-08-30T11:00:00Z"))

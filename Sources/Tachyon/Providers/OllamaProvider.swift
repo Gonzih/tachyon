@@ -13,8 +13,7 @@ actor OllamaProvider: UsageProvider {
     nonisolated let pollInterval: TimeInterval = 120
     nonisolated let category: ProviderCategory = .infrastructure
     nonisolated let isExperimental = true
-    nonisolated let about: String? =
-        "Daemon activity, counted from Ollama's own log. Ollama doesn't expose cloud quota yet — when it does, this becomes a real usage ring."
+    nonisolated let about: String? = "Request counts only; Ollama has no quota API."
 
     /// The daemon appends a line per request; the watcher makes the ring
     /// tick within seconds of activity.
@@ -55,7 +54,7 @@ actor OllamaProvider: UsageProvider {
             || Usage.fileExists("/usr/local/bin/ollama")
         guard installed else { return .notInstalled }
         guard activeLog != nil else {
-            return .notSignedIn("Start the Ollama server to begin counting")
+            return .notSignedIn("Start Ollama")
         }
         return .ready
     }
@@ -69,14 +68,14 @@ actor OllamaProvider: UsageProvider {
         let lines = Usage.tailLines(path: path, byteCount: Self.tailBytes)
         let counts = Self.countRequests(lines: lines, now: Date())
 
-        let hour = UsageWindow(label: "Requests · past hour", count: counts.pastHour, unit: "requests", resetsAt: nil)
-        let today = UsageWindow(label: "Requests · today", count: counts.today, unit: "requests", resetsAt: nil)
+        let hour = UsageWindow(label: "Past hour", count: counts.pastHour, unit: "requests", resetsAt: nil)
+        let today = UsageWindow(label: "Today", count: counts.today, unit: "requests", resetsAt: nil)
 
         return .ok(UsageSnapshot(
             primary: hour,
             windows: [hour, today],
             asOf: Date(),
-            detail: "daemon activity · local/cloud not distinguishable"
+            detail: nil
         ))
     }
 

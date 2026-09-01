@@ -33,7 +33,7 @@ enum ResetFormat {
     }
 }
 
-/// Popover body: header, one bar per `UsageWindow`, freshness + plan footer.
+/// Popover body: header, one bar per `UsageWindow`, freshness + detail footer.
 struct DetailView: View {
     let slot: ProviderSlot
     @Environment(\.colorScheme) private var colorScheme
@@ -56,7 +56,7 @@ struct DetailView: View {
                     .foregroundStyle(theme.fg(0.75))
                     .fixedSize(horizontal: false, vertical: true)
             } else if rows.isEmpty {
-                Text("No usage data available")
+                Text("No usage data")
                     .font(.system(size: 11))
                     .foregroundStyle(theme.fg(0.5))
             } else {

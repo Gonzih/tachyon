@@ -19,19 +19,17 @@ actor OpenRouterProvider: UsageProvider {
     nonisolated let glyph = ProviderGlyph.openrouter
     nonisolated let pollInterval: TimeInterval = 120
     nonisolated let category: ProviderCategory = .infrastructure
-    nonisolated let about: String? =
-        "Account credits plus this key\u{2019}s spend across every model routed through OpenRouter."
     nonisolated let settings: [ProviderSetting] = [
         ProviderSetting(
             key: "apiKey",
             title: "API key",
-            help: "Stored in your Keychain. Create one at openrouter.ai/keys.",
+            help: "Keychain-stored. Create one at openrouter.ai/keys.",
             kind: .secret(placeholder: "sk-or-…")
         ),
         ProviderSetting(
             key: "budget.monthly",
             title: "Monthly budget",
-            help: "Colors the ring against a spend ceiling when the key has no hard limit.",
+            help: "Optional spend ceiling when the key has no limit.",
             kind: .money(defaultValue: nil)
         ),
     ]
@@ -179,7 +177,7 @@ actor OpenRouterProvider: UsageProvider {
                 primary: primary,
                 windows: windows,
                 asOf: Date(),
-                detail: isFree ? "Free tier" : nil
+                detail: isFree ? "Free" : nil
             ))
         } catch {
             Log.provider.error("openrouter request failed")

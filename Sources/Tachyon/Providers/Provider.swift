@@ -233,7 +233,7 @@ struct UsageSnapshot: Sendable, Equatable, Codable {
     /// Popover rows, primary first.
     let windows: [UsageWindow]
     let asOf: Date
-    /// Plan/tier string for the popover footer ("Max", "Pro plan"…).
+    /// Concise footer detail, such as a tier or actionable provider notice.
     let detail: String?
 }
 
@@ -327,9 +327,8 @@ protocol UsageProvider: Sendable {
     nonisolated var staleIndicatorDelay: TimeInterval { get }
     /// Marks the provider as unverified/experimental in the UI.
     nonisolated var isExperimental: Bool { get }
-    /// Optional one-line description — shown on hover in the menu and in the
-    /// provider's Settings pane. Useful when the name alone doesn't explain
-    /// what's being metered (corporate accounts, aggregators…).
+    /// Optional one-line caveat shown on hover and in Settings. Omit ordinary
+    /// provider summaries; use this only when the meter can be misread.
     nonisolated var about: String? { get }
     /// Files/directories to watch while the provider is enabled. The app owns
     /// the FSEvents machinery: on any change it calls `fileChanged(_:)` with
