@@ -3,7 +3,8 @@
 # Tachyon
 
 Live rate-limit rings for Claude Code, Claude Desktop, Codex CLI, Codex Desktop,
-Grok, Cursor, Oh My Pi, OpenRouter and Ollama, docked to the edge of your screen.
+Grok Build, Grok Bot, Cursor, Oh My Pi, OpenRouter and Ollama, docked to the
+edge of your screen.
 Native macOS, zero config.
 
 <p align="center"><img src="assets/tachyon-demo.gif" width="680" alt="Tachyon: shim on the screen edge, mouse in, pill reveals, popovers per provider"></p>
@@ -54,7 +55,8 @@ source whose API key is entered explicitly in Settings.
 | Claude Desktop | read-only app cookie → `claude.ai/api/organizations/.../usage` | 120s + cookie changes |
 | Codex CLI | local `$CODEX_HOME` account: direct `wham/usage`, then an isolated app-server fallback; recent CLI rollout history only while signed out | 60s + on turn completion (FSEvents) |
 | Codex Desktop | recent exact-origin Desktop rollout history (read-only; current for 60s, stale until 180s) | 60s + on turn completion (FSEvents) |
-| Grok | `cli-chat-proxy.grok.com/v1/billing`; recent unified-log history only while signed out | 120s |
+| Grok Build | `cli-chat-proxy.grok.com/v1/billing`; recent unified-log history only while signed out | 120s |
+| Grok Bot | read-only encrypted desktop state → `api2.cursor.sh` DashboardService | 120s |
 | Cursor | `api2.cursor.sh` DashboardService, token from `state.vscdb` (read-only) | 120s |
 | Oh My Pi | `~/.omp/agent/agent.db` (read-only): quota windows + `cost_usd` history | 120s |
 | OpenRouter | `openrouter.ai/api/v1/auth/key` — key you add in Settings (Keychain-stored) | 120s |
@@ -74,6 +76,11 @@ Claude's Safe Storage Keychain item, requires an unambiguous session identity,
 then calls Claude's own bootstrap and usage endpoints. It never writes either
 app's files or credentials.
 
+Grok Build and Grok Bot are independent products and remain independent rings.
+For Grok Bot, Tachyon reads its bounded encrypted desktop state, asks the app's
+own Safe Storage Keychain item to decrypt the active token in memory, then calls
+the Bot usage endpoint. It never stores, logs, refreshes, or writes the token.
+
 Every surface stays separate, even when two happen to use the same account or
 quota pool. The pill keeps its scarce pixels clean—no `C`/`D` source letters;
 the popover, Settings, context menu, and accessibility label name the source.
@@ -84,10 +91,11 @@ your choices, and disabled sources remain dormant until you enable them.
 
 Oh My Pi needs none — its own database already carries quota windows and
 per-turn cost, so the ring shows dollars when no bounded window exists.
-The first read from each installed Claude source may trigger its own Keychain
-prompt — choose **Always Allow**. Reads go through `/usr/bin/security`, so the
-approval sticks across updates. Tachyon never refreshes anyone's tokens; an
-expired token shows `!` and the popover names the command that fixes it.
+The first read from an installed Claude or Grok Bot source may trigger its own
+Keychain prompt — choose **Always Allow**. Reads go through
+`/usr/bin/security`, so the approval sticks across updates. Tachyon never
+refreshes anyone's tokens; an expired token shows `!` and the popover names the
+command that fixes it.
 
 Ring colors: green < 50%, yellow from 50, orange from 70, red from 90. Known
 provider-enforced windows also show their projected pace; a pulse means the

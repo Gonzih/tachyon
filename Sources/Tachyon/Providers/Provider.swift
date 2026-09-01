@@ -421,6 +421,7 @@ enum ProviderRegistry {
         CodexProvider(),
         CodexDesktopProvider(),
         GrokProvider(),
+        GrokBotProvider(),
         CursorProvider(),
         OmpProvider(),
         OpenRouterProvider(),

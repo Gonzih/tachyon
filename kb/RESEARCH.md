@@ -85,7 +85,7 @@ Re-verified 2026-08-30 against OpenAI's current [app-server manual](https://gith
   never a persisted credential or account identifier; if the required account
   context is unavailable, identity remains nil.
 
-## Grok (from llmquota source; unverified live — no auth.json on this machine)
+## Grok Build (from llmquota source; unverified live — no auth.json on this machine)
 
 - Creds: `~/.grok/auth.json` (`GROK_HOME`/`GROK_AUTH_JSON` overrides): map `scopeKey → {key(JWT), refresh_token, auth_mode:"oidc", oidc_issuer, oidc_client_id, email, user_id}`; filter issuer `https://auth.x.ai`; expiry = JWT `exp`.
 - Primary: `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` — `Authorization: Bearer <key>`, `X-XAI-Token-Auth: xai-grok-cli`, `x-userid: <user_id>`, `User-Agent: GrokCLI/<version>`. Proto3-JSON: `config.creditUsagePercent` (omitted = 0), `config.currentPeriod`, `productUsage[]`, `onDemandCap/Used`, `subscriptionTier`. Periods can be weekly or monthly; use an authoritative positive `currentPeriod.end − start` as the pace duration rather than fabricating seven days. (Installed `@xai-official/grok` binary contains `auth.json` string — consistent.)
@@ -100,6 +100,30 @@ Re-verified 2026-08-30 against OpenAI's current [app-server manual](https://gith
   Tachyon does not call them and only adopts credentials written by the CLI.
 - Live readings bind state to a per-launch HMAC of the exact key and available
   user context. Missing context yields nil identity rather than a guessed match.
+
+## Grok Bot — integrated and verified live 2026-09-01
+
+- This is a separate product from Grok Build. SpaceXAI's product page says the
+  beta has its own usage, separate from Grok and Cursor plans. The installed
+  signed app is Anysphere's `com.anysphere.sand` Electron bundle.
+- The active account token is inside the bounded
+  `~/Library/Application Support/Grok Bot/sand-secrets.json` account store,
+  encrypted with Electron Safe Storage. Tachyon reads the app-owned
+  `Grok Bot Safe Storage` Keychain item through `/usr/bin/security`, derives the
+  Chromium `v10` AES key, and decrypts only in memory. It never writes the file,
+  persists the token, or invokes any refresh path.
+- `POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetSandUsageStatus`
+  uses Connect JSON and returns the Bot pool's `usagePercent`, period start,
+  next reset, trial expiry, availability, and plan label. A live read on this
+  machine returned a usable Bot snapshot without printing credentials or
+  identifiers.
+- A live trial is labeled `Trial`; its expiry is shown as an explicit
+  `Trial ends …` footer, not presented as a recurring reset or used for pace
+  projection. If the provider retains an elapsed timestamp, the footer changes
+  to `Trial ended …`. Outside a trial, authoritative positive period start/end
+  values supply the weekly reset and duration.
+- Missing Keychain access, an invalid envelope/account scope, expired or 401
+  credentials, malformed usage, cancellation, and network failures fail closed.
 
 ## Cursor — integrated 2026-08-28
 

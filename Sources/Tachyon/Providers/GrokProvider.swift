@@ -1,13 +1,14 @@
 import Foundation
 
-/// Grok CLI usage.
+/// Grok Build CLI usage.
 ///
 /// This file is also the worked example in `CONTRIBUTING.md`: a provider is one
 /// file conforming to `UsageProvider`, one registry line, one glyph.
 actor GrokProvider: UsageProvider {
     nonisolated let id = "grok"
-    nonisolated let displayName = "Grok CLI"
+    nonisolated let displayName = "Grok Build"
     nonisolated let shortName = "Grok"
+    nonisolated let sourceLabel: String? = "Build"
     nonisolated let glyph = ProviderGlyph.grok
     /// The weekly credit window moves slowly; 120s is plenty.
     nonisolated let pollInterval: TimeInterval = 120

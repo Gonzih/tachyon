@@ -3,12 +3,14 @@ import SwiftUI
 /// Official provider marks, embedded as SVG path data and rendered grayscale
 /// (tinted by the caller — the app never uses brand colors). Geometry sources:
 /// Claude starburst & Cursor cube via simple-icons (CC0 path data), OpenAI knot
-/// via Wikimedia Commons, Grok comet via lobehub icons (MIT). The app still ships with
-/// zero assets: paths are parsed at render time and cached.
+/// via Wikimedia Commons, Grok comet via lobehub icons (MIT), and Grok Bot's
+/// two-slot mark traced from the signed app icon and official launch artwork.
+/// The app still ships with zero assets: paths are parsed at render time and cached.
 enum ProviderGlyph: String, Sendable, CaseIterable {
     case claude
     case codex
     case grok
+    case grokBot
     case cursor
     case omp
     case openrouter
@@ -17,7 +19,8 @@ enum ProviderGlyph: String, Sendable, CaseIterable {
     /// Native coordinate space of `pathData`.
     var viewBox: CGRect {
         switch self {
-        case .claude, .cursor, .grok, .omp, .openrouter, .ollama: return CGRect(x: 0, y: 0, width: 24, height: 24)
+        case .claude, .cursor, .grok, .grokBot, .omp, .openrouter, .ollama:
+            return CGRect(x: 0, y: 0, width: 24, height: 24)
         case .codex: return CGRect(x: 0, y: 0, width: 320, height: 320)
         }
     }
@@ -31,6 +34,10 @@ enum ProviderGlyph: String, Sendable, CaseIterable {
         case .grok:
             // Current Grok comet mark (lobehub icons, MIT).
             return "M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815"
+        case .grokBot:
+            // Circular two-slot mark from Grok Bot's signed macOS app icon.
+            // The even-odd fill cuts both diagonal capsules out of the disc.
+            return "M12 1A11 11 0 1 1 12 23A11 11 0 1 1 12 1Z M6.4 7.2Q8.2 6 9.5 7.8L14.4 14.7Q15.7 16.6 13.9 17.9Q12.1 19.1 10.8 17.3L5.9 10.4Q4.6 8.5 6.4 7.2Z M14.7 4.8Q16.3 3.7 17.5 5.4L21.1 10.6Q22.3 12.3 20.7 13.4Q19.1 14.5 17.9 12.8L14.3 7.6Q13.1 5.9 14.7 4.8Z"
         case .omp:
             // Oh My Pi's geometric pi: full-width bar, short left leg,
             // long right stem. Traced from the official mark.

@@ -116,7 +116,8 @@ Under Swift 6 strict concurrency an actor cannot satisfy a `nonisolated`
 ```swift
 actor GrokProvider: UsageProvider {
     nonisolated let id = "grok"
-    nonisolated let displayName = "Grok CLI"
+    nonisolated let displayName = "Grok Build"
+    nonisolated let sourceLabel: String? = "Build"
     nonisolated let glyph = ProviderGlyph.grok
     nonisolated let pollInterval: TimeInterval = 120
     nonisolated let isExperimental = true
