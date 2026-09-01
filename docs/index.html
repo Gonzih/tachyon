@@ -64,8 +64,20 @@
     transition: background .6s, border-color .6s; }
   .card h3 { font-size: 15px; font-weight: 650; margin-bottom: 6px; }
   .card p { font-size: 14px; color: var(--muted); }
-  .providers { text-align: center; color: var(--muted); font-size: 14px; margin-top: 10px; }
-  .providers b { color: var(--fg); font-weight: 600; }
+  .provider-section { padding: 28px 0 34px; }
+  .provider-section .wrap { max-width: 1040px; }
+  .provider-cluster {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 7px; list-style: none; padding: 0; margin: 0 auto;
+  }
+  .provider-cluster li { display: flex; }
+  .provider-intro { color: var(--muted); font-size: 13px; padding: 7px 3px; }
+  .provider-name {
+    color: var(--fg); background: var(--card); border: 1px solid var(--border);
+    border-radius: 999px; padding: 7px 11px; font-size: 12.5px; font-weight: 600;
+    line-height: 1; white-space: nowrap;
+    transition: background .6s, border-color .6s, color .6s;
+  }
 
   .demo-head { max-width: 650px; margin: 0 auto 30px; text-align: center; }
   .demo-head h2 { font-size: clamp(26px, 4vw, 36px); margin-bottom: 10px; }
@@ -237,9 +249,9 @@
     color: var(--muted); display: inline-flex; align-items: center; }
   .copybtn:hover { color: var(--fg); }
   .copybtn.ok { color: var(--green); }
-  .harness-chip { position: relative; border: 1px solid var(--border); background: var(--card);
-    color: var(--fg); font: 600 13px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-    padding: 9px 18px; border-radius: 999px; cursor: pointer;
+  .harness-chip { position: relative; border: 1px solid var(--fg); background: transparent;
+    color: var(--fg); font: 600 12.5px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    line-height: 1; padding: 7px 12px; border-radius: 999px; cursor: pointer;
     transition: background .35s, border-color .35s, color .35s, transform .15s; }
   .harness-chip:hover { transform: translateY(-1px); border-color: var(--muted); }
   .harness-chip:active { transform: translateY(0); }
@@ -247,6 +259,11 @@
   .harness-chip.copied { background: var(--green); border-color: var(--green); color: #fff; }
   .harness-chip.copied .chip-idle { display: none; }
   .harness-chip.copied .chip-done { display: inline; }
+  @media (max-width: 640px) {
+    .provider-section { padding: 20px 0 26px; }
+    .provider-cluster { gap: 6px; }
+    .provider-intro { flex-basis: 100%; text-align: center; padding: 0 0 3px; }
+  }
 </style>
 </head>
 <body>
@@ -466,12 +483,22 @@
   </div>
 </section>
 
-<section>
+<section class="provider-section">
   <div class="wrap">
-    <p class="providers">Works with <b>Claude Code</b> · <b>Claude Desktop</b> · <b>Codex CLI</b> · <b>Codex Desktop</b> · <b>Grok Build</b> · <b>Grok Bot</b> · <b>Cursor</b> · <b>Oh My Pi</b> · <b>OpenRouter</b> · <b>Ollama</b></p>
-    <br>
-    <p class="providers"><button class="harness-chip" id="addyours"><span class="chip-idle">+ add your provider</span><span class="chip-done">✓ prompt copied — paste it into your agent</span></button></p>
-    <br>
+    <ul class="provider-cluster" aria-label="Supported providers">
+      <li class="provider-intro">Works with</li>
+      <li><span class="provider-name">Claude Code</span></li>
+      <li><span class="provider-name">Claude Desktop</span></li>
+      <li><span class="provider-name">Codex CLI</span></li>
+      <li><span class="provider-name">Codex Desktop</span></li>
+      <li><span class="provider-name">Grok Build</span></li>
+      <li><span class="provider-name">Grok Bot</span></li>
+      <li><span class="provider-name">Cursor</span></li>
+      <li><span class="provider-name">Oh My Pi</span></li>
+      <li><span class="provider-name">OpenRouter</span></li>
+      <li><span class="provider-name">Ollama</span></li>
+      <li><button class="harness-chip" id="addyours"><span class="chip-idle">+ add your provider</span><span class="chip-done">✓ prompt copied</span></button></li>
+    </ul>
   </div>
 </section>
 
