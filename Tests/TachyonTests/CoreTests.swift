@@ -327,34 +327,24 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual([budget].worstFirst().first?.label, "Month")
     }
 
-    func testStatusSummaryIncludesOnlyProviderHardWalls() {
+    func testStatusSummaryUsesLivePrimaryPercentagesOnly() {
         let hardLow = UsageWindow(label: "Session", percentUsed: 20, resetsAt: nil)
         let hardHigh = UsageWindow(label: "Weekly", percentUsed: 70, resetsAt: nil)
-        let personalBudget = UsageWindow(
-            label: "Month", spendUSD: 95, budgetUSD: 100, resetsAt: nil)
         let spend = UsageWindow(label: "All time", spendUSD: 500, resetsAt: nil)
-        let count = UsageWindow(label: "Today", count: 12, unit: "requests", resetsAt: nil)
-
-        XCTAssertEqual(
-            StatusSummary.closestHardWallPercent(
-                in: [personalBudget, hardLow, count, hardHigh, spend]
-            ),
-            70
-        )
-        XCTAssertNil(StatusSummary.closestHardWallPercent(
-            in: [personalBudget, spend, count]
-        ))
 
         let liveSnapshot = UsageSnapshot(
-            primary: hardLow, windows: [hardLow], asOf: Date(), detail: nil)
+            primary: hardLow, windows: [hardLow, hardHigh], asOf: Date(), detail: nil)
         let staleSnapshot = UsageSnapshot(
             primary: hardHigh, windows: [hardHigh], asOf: Date(), detail: nil)
-        XCTAssertEqual(StatusSummary.closestLiveHardWallPercent(in: [
+        let spendSnapshot = UsageSnapshot(
+            primary: spend, windows: [spend], asOf: Date(), detail: nil)
+        XCTAssertEqual(StatusSummary.overallLiveUsagePercent(in: [
             .ok(liveSnapshot),
+            .ok(spendSnapshot),
             .stale(staleSnapshot, asOf: staleSnapshot.asOf),
             .unavailable,
         ]), 20)
-        XCTAssertNil(StatusSummary.closestLiveHardWallPercent(in: [
+        XCTAssertNil(StatusSummary.overallLiveUsagePercent(in: [
             .stale(staleSnapshot, asOf: staleSnapshot.asOf),
             .unavailable,
         ]))
@@ -445,17 +435,41 @@ final class CoreTests: XCTestCase {
         )
     }
 
-    func testStatusSummaryIncludesSecondaryLiveHardWall() {
-        let spend = UsageWindow(label: "Credits", spendUSD: 12, resetsAt: nil)
-        let hardLimit = UsageWindow(label: "Key limit", percentUsed: 84, resetsAt: nil)
-        let snapshot = UsageSnapshot(
-            primary: spend,
-            windows: [spend, hardLimit],
+    func testStatusSummaryUsesOneDisplayedValuePerLiveProvider() {
+        let primary = UsageWindow(label: "Current", percentUsed: 40, resetsAt: nil)
+        let secondary = UsageWindow(label: "Weekly", percentUsed: 84, resetsAt: nil)
+        let first = UsageSnapshot(
+            primary: primary,
+            windows: [primary, secondary],
+            asOf: Date(),
+            detail: nil
+        )
+        let lowerWall = UsageWindow(label: "Weekly", percentUsed: 20, resetsAt: nil)
+        let second = UsageSnapshot(
+            primary: lowerWall,
+            windows: [lowerWall],
             asOf: Date(),
             detail: nil
         )
 
-        XCTAssertEqual(StatusSummary.closestLiveHardWallPercent(in: [.ok(snapshot)]), 84)
+        XCTAssertEqual(StatusSummary.overallLiveUsagePercent(in: [
+            .ok(first),
+            .ok(second),
+        ]), 30)
+    }
+
+    func testStatusSummaryUsesMedianSelectedHarnessUsage() {
+        let states = [0.0, 43, 100].map { percent -> ProviderState in
+            let window = UsageWindow(label: "Usage", percentUsed: percent, resetsAt: nil)
+            return .ok(UsageSnapshot(
+                primary: window,
+                windows: [window],
+                asOf: Date(),
+                detail: nil
+            ))
+        }
+
+        XCTAssertEqual(StatusSummary.overallLiveUsagePercent(in: states), 43)
     }
 
     // MARK: SVG path parser

@@ -4,24 +4,18 @@ import ServiceManagement
 import SwiftUI
 
 enum StatusSummary {
-    /// The menu-bar gauge represents provider-enforced percentage limits only.
-    /// A spend-vs-budget percentage is a useful personal meter, not a hard wall.
-    static func closestHardWallPercent(in windows: [UsageWindow]) -> Double? {
-        windows.compactMap { window in
-            guard window.spendUSD == nil else { return nil }
-            return window.percentUsed
-        }.max()
-    }
-
-    /// The status item has no room for a stale qualifier, so it must not draw
-    /// an old value as if it were current. Stale detail remains available in
-    /// the explicitly labeled pill/menu/popover surfaces.
-    static func closestLiveHardWallPercent(in states: [ProviderState]) -> Double? {
-        let liveWindows = states.flatMap { state -> [UsageWindow] in
-            guard case .ok(let snapshot) = state else { return [] }
-            return snapshot.windows
-        }
-        return closestHardWallPercent(in: liveWindows)
+    /// Median utilization across selected providers, using the same primary
+    /// percentage shown beside each provider in the menu. Unknown, stale, and
+    /// non-percentage sources are omitted rather than guessed as zero.
+    static func overallLiveUsagePercent(in states: [ProviderState]) -> Double? {
+        let percents = states.compactMap { state -> Double? in
+            guard case .ok(let snapshot) = state else { return nil }
+            return snapshot.primary.percentUsed
+        }.sorted()
+        guard !percents.isEmpty else { return nil }
+        let middle = percents.count / 2
+        guard percents.count.isMultiple(of: 2) else { return percents[middle] }
+        return (percents[middle - 1] + percents[middle]) / 2
     }
 }
 
@@ -128,24 +122,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.mainMenu = main
     }
 
-    /// The gauge shows the closest verified hard wall. Averaging unrelated
-    /// subscriptions hides the account most likely to block the next task.
+    /// The gauge shows median progress across enabled, ready sources.
     func refreshStatusIcon() {
-        let summary = StatusSummary.closestLiveHardWallPercent(
+        let summary = StatusSummary.overallLiveUsagePercent(
             in: model.visibleSlots.map(\.state)
         )
         let dark = statusItem?.button?.effectiveAppearance.isDarkTheme ?? true
         statusItem?.button?.image = Self.statusImage(percent: summary, darkMenuBar: dark)
         if let summary {
-            statusItem?.button?.toolTip = "Tachyon — closest limit is \(Int(summary.rounded()))% used"
+            statusItem?.button?.toolTip = "Tachyon — \(Int(summary.rounded()))% overall usage"
         } else {
             statusItem?.button?.toolTip = "Tachyon"
         }
     }
 
     /// A thin outline circle that fills like a pie, clockwise from 12 o'clock,
-    /// with the closest hard limit among enabled providers. The colored image
-    /// redraws for light and dark menu bars.
+    /// with overall usage across enabled providers. The colored image redraws
+    /// for light and dark menu bars.
     private static func statusImage(percent: Double?, darkMenuBar: Bool) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
