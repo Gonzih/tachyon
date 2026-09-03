@@ -1,7 +1,9 @@
 import AppKit
+import Darwin
 @preconcurrency import UserNotifications
 import ServiceManagement
 import SwiftUI
+import TachyonCLI
 
 enum StatusSummary {
     /// Median utilization across selected providers, using the same primary
@@ -29,6 +31,10 @@ private enum UpdateMenuState {
 @main
 enum TachyonMain {
     static func main() {
+        let arguments = CommandLine.arguments
+        if TachyonCommandLine.isCLIInvocation(arguments: arguments) {
+            exit(TachyonCommandLine.run(arguments: Array(arguments.dropFirst())))
+        }
         if SmokeTest.runIfRequested() { return }
 
         let app = NSApplication.shared

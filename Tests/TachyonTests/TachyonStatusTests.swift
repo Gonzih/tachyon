@@ -104,6 +104,12 @@ final class TachyonStatusTests: XCTestCase {
         XCTAssertThrowsError(try TachyonCLIParser.parse(["status", "--refresh"]))
     }
 
+    func testCLIInvocationRequiresHomebrewCommandName() {
+        XCTAssertTrue(TachyonCommandLine.isCLIInvocation(arguments: ["/opt/homebrew/bin/tachyon", "status"]))
+        XCTAssertFalse(TachyonCommandLine.isCLIInvocation(arguments: ["/Applications/Tachyon.app/Contents/MacOS/Tachyon"]))
+        XCTAssertFalse(TachyonCommandLine.isCLIInvocation(arguments: []))
+    }
+
     func testHumanRendererMakesCurrentStaleAndUnavailableClearWithoutANSI() {
         let response = TachyonStatusResponse(
             generatedAt: "2026-09-03T12:00:00Z",

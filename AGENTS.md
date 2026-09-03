@@ -130,12 +130,13 @@ extra confirmation turn. Never infer release authorization from a build task.
    is the only pre-push check.
 
    When the release bundle contains the CLI, add
-   `binary "#{appdir}/Tachyon.app/Contents/MacOS/TachyonCLI", target: "tachyon"`
-   beside `app "Tachyon.app"`. The bundle helper must remain `TachyonCLI`:
-   macOS filesystems are normally case-insensitive, so a sibling named
-   `tachyon` aliases `Tachyon` and would launch the app instead of the CLI.
-   Before cask publication, confirm the two bundle executables have different
-   SHA-256s and `Tachyon.app/Contents/MacOS/TachyonCLI --help` prints CLI usage.
+   `binary "#{appdir}/Tachyon.app/Contents/MacOS/Tachyon", target: "tachyon"`
+   beside `app "Tachyon.app"`. The signed app executable dispatches to CLI
+   mode only when Homebrew invokes it as lowercase `tachyon`; do not add a
+   second Mach-O helper. This keeps every shipped executable under the
+   cloud-managed Developer ID signature and avoids case-insensitive filename
+   collisions. Before cask publication, verify CLI mode through a temporary
+   symlink named `tachyon`, not by directly invoking `Tachyon`.
 
    For an explicitly requested end-to-end **in-app updater test**, do not run a
    CLI metadata refresh or upgrade after publishing the cask. Preserve the old

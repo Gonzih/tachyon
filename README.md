@@ -57,8 +57,8 @@ tachyon status --json
 Human output makes current, stale, unavailable, and sign-in state clear.
 `--json` emits the same enabled-source snapshot with `schemaVersion: 1` and raw
 usage values for harnesses. Open Tachyon first; the command does not launch it.
-The app bundle carries the executable, and Homebrew exposes it on `PATH` with
-the app from the release that includes this feature.
+The signed app executable carries the CLI, and Homebrew exposes it on `PATH`
+as `tachyon` with the app from the release that includes this feature.
 
 ## How it works
 

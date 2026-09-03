@@ -3,6 +3,14 @@ import Foundation
 import TachyonIPC
 
 public enum TachyonCommandLine {
+    /// Homebrew exposes the signed app executable under the lowercase
+    /// `tachyon` name. Route that invocation before AppKit initializes, so a
+    /// status call is strictly a local IPC client and never starts another app.
+    public static func isCLIInvocation(arguments: [String]) -> Bool {
+        guard let executable = arguments.first else { return false }
+        return URL(fileURLWithPath: executable).lastPathComponent == "tachyon"
+    }
+
     public static func run(arguments: [String]) -> Int32 {
         let command: TachyonCLICommand
         do {
