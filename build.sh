@@ -27,6 +27,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp .build/release/Tachyon "$APP/Contents/MacOS/Tachyon"
+cp .build/release/TachyonCLI "$APP/Contents/MacOS/TachyonCLI"
+# APFS is commonly case-insensitive: `Tachyon` and `tachyon` would alias the
+# same path and quietly turn a CLI invocation into another app launch.
+# Keep the bundle filenames distinct and fail rather than shipping that state.
+if cmp -s "$APP/Contents/MacOS/Tachyon" "$APP/Contents/MacOS/TachyonCLI"; then
+    echo "Tachyon and TachyonCLI bundle executables must be distinct." >&2
+    exit 1
+fi
 cp assets/Tachyon.icns "$APP/Contents/Resources/Tachyon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST

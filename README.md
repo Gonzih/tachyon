@@ -43,6 +43,23 @@ From source:
 
 macOS 15+. `~/Applications` (or `/Applications`) is required for Launch at Login.
 
+## CLI
+
+The bundled `tachyon` command asks the running app for its already-cached
+usage state. It never refreshes a provider, reads a credential, or changes
+Settings.
+
+```sh
+tachyon status
+tachyon status --json
+```
+
+Human output makes current, stale, unavailable, and sign-in state clear.
+`--json` emits the same enabled-source snapshot with `schemaVersion: 1` and raw
+usage values for harnesses. Open Tachyon first; the command does not launch it.
+The app bundle carries the executable, and Homebrew exposes it on `PATH` with
+the app from the release that includes this feature.
+
 ## How it works
 
 It discovers credentials from your existing harness sign-ins and asks their

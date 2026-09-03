@@ -129,6 +129,14 @@ extra confirmation turn. Never infer release authorization from a build task.
    Homebrew no longer accepts a cask path for `brew audit`, so path-based style
    is the only pre-push check.
 
+   When the release bundle contains the CLI, add
+   `binary "#{appdir}/Tachyon.app/Contents/MacOS/TachyonCLI", target: "tachyon"`
+   beside `app "Tachyon.app"`. The bundle helper must remain `TachyonCLI`:
+   macOS filesystems are normally case-insensitive, so a sibling named
+   `tachyon` aliases `Tachyon` and would launch the app instead of the CLI.
+   Before cask publication, confirm the two bundle executables have different
+   SHA-256s and `Tachyon.app/Contents/MacOS/TachyonCLI --help` prints CLI usage.
+
    For an explicitly requested end-to-end **in-app updater test**, do not run a
    CLI metadata refresh or upgrade after publishing the cask. Preserve the old
    installed receipt and tap checkout, leave the current development app

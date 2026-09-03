@@ -50,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var updateCheckTask: Task<Void, Never>?
     private var updateMenuState = UpdateMenuState.idle
     private var notifiedUpdateVersion: String?
+    private lazy var statusServer = TachyonStatusServer { [unowned self] in
+        self.model.tachyonStatus(appVersion: Self.appVersion)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.app.info("Tachyon launching")
@@ -66,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         edge.start()
         model.start()
+        statusServer.start()
 
         installStatusItem()
         startUpdateChecks()
@@ -73,8 +77,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         updateCheckTask?.cancel()
+        statusServer.stop()
         model.stop()
         edge?.stop()
+    }
+
+    private static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     }
 
     // MARK: Status item
