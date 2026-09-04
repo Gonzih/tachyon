@@ -5,12 +5,14 @@ import SwiftUI
 /// Claude starburst & Cursor cube via simple-icons (CC0 path data), OpenAI knot
 /// via Wikimedia Commons, Grok comet via lobehub icons (MIT), and Grok Bot's
 /// two-slot mark traced from the signed app icon and official launch artwork.
+/// Antigravity's arch comes from Google's official product SVG.
 /// The app still ships with zero assets: paths are parsed at render time and cached.
 enum ProviderGlyph: String, Sendable, CaseIterable {
     case claude
     case codex
     case grok
     case grokBot
+    case antigravity
     case cursor
     case omp
     case openrouter
@@ -22,6 +24,7 @@ enum ProviderGlyph: String, Sendable, CaseIterable {
         case .claude, .cursor, .grok, .grokBot, .omp, .openrouter, .ollama:
             return CGRect(x: 0, y: 0, width: 24, height: 24)
         case .codex: return CGRect(x: 0, y: 0, width: 320, height: 320)
+        case .antigravity: return CGRect(x: 0, y: 0, width: 113, height: 113)
         }
     }
 
@@ -38,6 +41,8 @@ enum ProviderGlyph: String, Sendable, CaseIterable {
             // Circular two-slot mark from Grok Bot's signed macOS app icon.
             // The even-odd fill cuts both diagonal capsules out of the disc.
             return "M12 1A11 11 0 1 1 12 23A11 11 0 1 1 12 1Z M6.4 7.2Q8.2 6 9.5 7.8L14.4 14.7Q15.7 16.6 13.9 17.9Q12.1 19.1 10.8 17.3L5.9 10.4Q4.6 8.5 6.4 7.2Z M14.7 4.8Q16.3 3.7 17.5 5.4L21.1 10.6Q22.3 12.3 20.7 13.4Q19.1 14.5 17.9 12.8L14.3 7.6Q13.1 5.9 14.7 4.8Z"
+        case .antigravity:
+            return "M89.6992 93.695C94.3659 97.195 101.366 94.8617 94.9492 88.445C75.6992 69.7783 79.7825 18.445 55.8659 18.445C31.9492 18.445 36.0325 69.7783 16.7825 88.445C9.78251 95.445 17.3658 97.195 22.0325 93.695C40.1159 81.445 38.9492 59.8617 55.8659 59.8617C72.7825 59.8617 71.6159 81.445 89.6992 93.695Z"
         case .omp:
             // Oh My Pi's geometric pi: full-width bar, short left leg,
             // long right stem. Traced from the official mark.

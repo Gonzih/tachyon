@@ -3,8 +3,8 @@
 # Tachyon
 
 Live rate-limit rings for Claude Code, Claude Desktop, Codex CLI, Codex Desktop,
-Grok Build, Grok Bot, Cursor, Oh My Pi, OpenRouter and Ollama, docked to the
-edge of your screen.
+Grok Build, Grok Bot, Google Antigravity, Cursor, Oh My Pi, OpenRouter and
+Ollama, docked to the edge of your screen.
 Native macOS, zero config.
 
 <p align="center"><img src="assets/tachyon-demo.gif" width="680" alt="Tachyon: shim on the screen edge, mouse in, pill reveals, popovers per provider"></p>
@@ -74,6 +74,7 @@ source whose API key is entered explicitly in Settings.
 | Codex Desktop | recent exact-origin Desktop rollout history (read-only; current for 60s, stale until 180s) | 60s + on turn completion (FSEvents) |
 | Grok Build | `cli-chat-proxy.grok.com/v1/billing`; recent unified-log history only while signed out | 120s |
 | Grok Bot | read-only encrypted desktop state → `api2.cursor.sh` DashboardService | 120s |
+| Google Antigravity | AGY's documented non-interactive `/usage` command | 120s |
 | Cursor | `api2.cursor.sh` DashboardService, token from `state.vscdb` (read-only) | 120s |
 | Oh My Pi | `~/.omp/agent/agent.db` (read-only): quota windows + `cost_usd` history | 120s |
 | OpenRouter | `openrouter.ai/api/v1/auth/key` — key you add in Settings (Keychain-stored) | 120s |
@@ -98,8 +99,15 @@ For Grok Bot, Tachyon reads its bounded encrypted desktop state, asks the app's
 own Safe Storage Keychain item to decrypt the active token in memory, then calls
 the Bot usage endpoint. It never stores, logs, refreshes, or writes the token.
 
-Every surface stays separate, even when two happen to use the same account or
-quota pool. The pill keeps its scarce pixels clean—no `C`/`D` source letters;
+Google Antigravity reports account-level quota buckets through AGY's documented
+`/usage` command. Tachyon invokes that command without inspecting AGY's
+credentials or Keychain. Because the payload does not identify a desktop or CLI
+surface, Tachyon shows one Antigravity ring with separately labeled Gemini and
+Claude/GPT quotas. AGY CLI must be installed and signed in for the readout.
+
+Providers with separate desktop and CLI readings keep those surfaces separate,
+even when they use the same account or quota pool. The pill keeps its scarce
+pixels clean—no `C`/`D` source letters;
 the popover, Settings, context menu, and accessibility label name the source.
 
 The first time Tachyon sees a provider, it performs one read-only detection

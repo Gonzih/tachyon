@@ -125,6 +125,32 @@ Re-verified 2026-08-30 against OpenAI's current [app-server manual](https://gith
 - Missing Keychain access, an invalid envelope/account scope, expired or 401
   credentials, malformed usage, cancellation, and network failures fail closed.
 
+## Google Antigravity / AGY — integrated and verified live 2026-09-04
+
+- Official AGY exposes quota data through its documented non-interactive
+  command: `agy --print /usage --output-format json --print-timeout 20s`.
+  The JSON envelope is `command.data.groups[].buckets[]`; each usable bucket
+  carries `remaining_fraction` (0...1), optional `reset_time`, and optional
+  `window`. Tachyon renders `used = (1 - remaining_fraction) * 100`, keeps only
+  provider-reported resets, and uses compact numeric durations only when AGY
+  supplies them.
+- Google's [model documentation](https://antigravity.google/docs/models/)
+  shows separate Gemini and Claude/GPT quota groups with repeated weekly and
+  five-hour bucket titles. Preserve the parent group in each row label and
+  remove “Limit Remaining” from the period title to match the percent-used
+  meter. Do not infer a measurement duration from the display title.
+- The provider resolves the installed executable (`~/.local/bin/agy`, standard
+  Homebrew paths, then `PATH`) and runs only that documented command with a
+  25-second wall-clock and 512KiB output bound. It does not read AGY config,
+  credentials, tokens, account identity, or Keychain, and implements no OAuth
+  refresh. AGY manages its own sign-in and any internal auth or session writes.
+- AGY's official output is account-level and does not distinguish Desktop from
+  CLI activity. Tachyon intentionally displays one `antigravity` ring rather
+  than fabricate two source-specific allowances. A desktop-only install is
+  detected but needs AGY CLI installed for the readout.
+- The in-app mark is Google's official Antigravity product SVG arch, rendered
+  monochrome like the rest of Tachyon's glyphs; no third-party artwork ships.
+
 ## Cursor — integrated 2026-08-28
 
 - Token from read-only `state.vscdb` SQLite `ItemTable` key
