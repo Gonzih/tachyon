@@ -56,6 +56,30 @@ final class TachyonStatusTests: XCTestCase {
         XCTAssertNil(providers[0]["token"])
     }
 
+    @MainActor
+    func testStatusUsesRemainingBalanceForCredits() {
+        let now = Date(timeIntervalSince1970: 1_788_000_000)
+        let credits = UsageWindow(
+            label: "Credits",
+            spendUSD: 3473.21,
+            budgetUSD: 3501.85,
+            remainingUSD: 28.64,
+            resetsAt: nil
+        )
+        let response = TachyonStatusSnapshot.make(
+            slots: [slot(id: "openrouter", state: .ok(snapshot(
+                windows: [credits], asOf: now, detail: nil
+            )))],
+            appVersion: "test",
+            now: now
+        )
+
+        let window = response.providers[0].windows[0]
+        XCTAssertEqual(window.displayValue, "$28.64 left")
+        XCTAssertEqual(window.spendUSD, 3473.21)
+        XCTAssertEqual(window.budgetUSD, 3501.85)
+    }
+
     func testProtocolRoundTripsVersionedStatus() throws {
         let response = Self.sampleResponse
         let data = try TachyonStatusProtocol.encode(response)

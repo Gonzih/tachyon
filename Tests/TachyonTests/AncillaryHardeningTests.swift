@@ -1,9 +1,22 @@
+import AppKit
 import Foundation
 import Security
 import XCTest
 @testable import Tachyon
 
 final class SettingsWindowStateTests: XCTestCase {
+    @MainActor
+    func testInvisibleEditMenuRoutesPasteToFirstResponder() throws {
+        let menu = AppDelegate.makeEditMenu()
+        let paste = try XCTUnwrap(menu.items.first { $0.title == "Paste" })
+
+        XCTAssertEqual(menu.title, "Edit")
+        XCTAssertEqual(NSStringFromSelector(try XCTUnwrap(paste.action)), "paste:")
+        XCTAssertNil(paste.target)
+        XCTAssertEqual(paste.keyEquivalent, "v")
+        XCTAssertEqual(paste.keyEquivalentModifierMask, .command)
+    }
+
     func testLaunchAtLoginSynchronizationDoesNotBecomeAUserRequest() {
         var state = LaunchAtLoginControlState()
         XCTAssertEqual(state.request(for: true), .register)

@@ -33,6 +33,9 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
     let spendUSD: Double?
     /// User-set ceiling the spend is measured against, when any.
     let budgetUSD: Double?
+    /// Balance left in a provider-reported prepaid credit pool. Nil for
+    /// ordinary budgets, where showing spend against the ceiling is clearer.
+    let remainingUSD: Double?
     /// Unbounded count meter (requests, runs…). Nil for other meters.
     let count: Int?
     /// Unit label for `count` ("requests"). Nil unless `count` is set.
@@ -49,6 +52,7 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.percentUsed = Usage.clampPercent(percentUsed)
         self.spendUSD = nil
         self.budgetUSD = nil
+        self.remainingUSD = nil
         self.count = nil
         self.countUnit = nil
         self.resetsAt = resetsAt
@@ -60,6 +64,7 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.percentUsed = nil
         self.spendUSD = Usage.nonnegativeFinite(spendUSD)
         self.budgetUSD = nil
+        self.remainingUSD = nil
         self.count = nil
         self.countUnit = nil
         self.resetsAt = resetsAt
@@ -72,16 +77,24 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
         self.percentUsed = nil
         self.spendUSD = nil
         self.budgetUSD = nil
+        self.remainingUSD = nil
         self.count = max(0, count)
         self.countUnit = unit
         self.resetsAt = resetsAt
         self.windowSeconds = nil
     }
 
-    /// Spend measured against a user-set budget: carries dollars AND a derived
-    /// percent, so the ring gets bands and the popover can say "$34.20 of $50".
+    /// Spend measured against a known ceiling: carries dollars AND a derived
+    /// percent, so the ring gets bands and the popover can show either spend
+    /// against the ceiling or a provider-reported remaining balance.
     /// A budget that is zero, negative, or non-finite is treated as unset.
-    init(label: String, spendUSD: Double, budgetUSD: Double?, resetsAt: Date?) {
+    init(
+        label: String,
+        spendUSD: Double,
+        budgetUSD: Double?,
+        remainingUSD: Double? = nil,
+        resetsAt: Date?
+    ) {
         self.label = label
         let spend = Usage.nonnegativeFinite(spendUSD)
         self.spendUSD = spend
@@ -92,6 +105,7 @@ struct UsageWindow: Sendable, Equatable, Identifiable, Codable {
             self.budgetUSD = nil
             self.percentUsed = nil
         }
+        self.remainingUSD = remainingUSD.map(Usage.nonnegativeFinite)
         self.count = nil
         self.countUnit = nil
         self.resetsAt = resetsAt

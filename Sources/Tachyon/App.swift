@@ -134,7 +134,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         fileMenu.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
         fileItem.submenu = fileMenu
         main.addItem(fileItem)
+
+        let editItem = NSMenuItem()
+        editItem.submenu = Self.makeEditMenu()
+        main.addItem(editItem)
         NSApp.mainMenu = main
+    }
+
+    /// SecureField uses AppKit's normal first-responder paste action. An
+    /// accessory app has no visible Edit menu, so add the standard commands
+    /// to the invisible main menu to make their key equivalents route there.
+    static func makeEditMenu() -> NSMenu {
+        let menu = NSMenu(title: "Edit")
+        menu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        menu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        menu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        menu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        return menu
     }
 
     /// The gauge shows median progress across enabled, ready sources.

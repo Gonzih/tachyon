@@ -192,6 +192,7 @@ final class CoreTests: XCTestCase {
         let window = try JSONDecoder().decode(UsageWindow.self, from: Data(legacy.utf8))
         XCTAssertEqual(window.percentUsed, 36)
         XCTAssertNil(window.spendUSD)
+        XCTAssertNil(window.remainingUSD)
     }
 
     // MARK: Reset formatting

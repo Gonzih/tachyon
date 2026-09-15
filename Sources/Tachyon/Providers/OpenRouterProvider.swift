@@ -6,8 +6,8 @@ import Foundation
 ///
 /// Two endpoints, two scopes:
 /// - `GET /api/v1/credits` — account-wide `total_usage` against prepaid
-///   `total_credits`. The main metric: a real bounded window → percent ring,
-///   "$100.17 of $100". Credits never refresh, so no reset time.
+///   `total_credits`. The main metric keeps that depletion ring but shows the
+///   balance left. Credits never refresh, so no reset time.
 /// - `GET /api/v1/auth/key` — THIS key's cumulative `usage` (USD) and optional
 ///   `limit`. A limited key is a bounded window; otherwise monthly spend —
 ///   cumulative usage minus a month-start baseline Tachyon snapshots locally —
@@ -135,11 +135,7 @@ actor OpenRouterProvider: UsageProvider {
             if let credits = try? await Usage.get(Self.creditsURL, headers: headers),
                (200..<300).contains(credits.status) {
                 let account = JSONValue.parse(credits.body)["data"]
-                if let total = account["total_credits"].double,
-                   let used = account["total_usage"].double, total > 0 {
-                    creditsWindow = UsageWindow(
-                        label: "Credits", spendUSD: used, budgetUSD: total, resetsAt: nil)
-                }
+                creditsWindow = Self.creditsWindow(from: account)
             }
 
             guard credential.revision == Settings.secretRevision("apiKey", provider: id) else {
@@ -183,6 +179,27 @@ actor OpenRouterProvider: UsageProvider {
             Log.provider.error("openrouter request failed")
             return .unavailable
         }
+    }
+
+    /// The credits endpoint reports the running lifetime total purchased and
+    /// spent. Keep usage for the depletion ring, but surface the immediately
+    /// useful number: what remains available to spend.
+    static func creditsWindow(from account: JSONValue) -> UsageWindow? {
+        guard
+            let total = account["total_credits"].double,
+            let rawUsed = account["total_usage"].double,
+            total.isFinite, total > 0,
+            rawUsed.isFinite
+        else { return nil }
+
+        let used = max(0, rawUsed)
+        return UsageWindow(
+            label: "Credits",
+            spendUSD: used,
+            budgetUSD: total,
+            remainingUSD: max(0, total - used),
+            resetsAt: nil
+        )
     }
 
     static func credentialFingerprint(key: String, revision: Int) -> String? {

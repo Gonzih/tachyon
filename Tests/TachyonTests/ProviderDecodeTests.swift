@@ -205,6 +205,20 @@ final class ProviderDecodeTests: XCTestCase {
         XCTAssertNil(PaceFormat.caption(for: snapshot.primary))
     }
 
+    // MARK: OpenRouter
+
+    func testOpenRouterCreditsShowRemainingBalanceAndKeepDepletion() throws {
+        let account = JSONValue.parse(Data(#"{"total_credits":3501.85,"total_usage":3473.21}"#.utf8))
+        let window = try XCTUnwrap(OpenRouterProvider.creditsWindow(from: account))
+
+        XCTAssertEqual(window.label, "Credits")
+        XCTAssertEqual(window.spendUSD ?? -1, 3473.21, accuracy: 0.001)
+        XCTAssertEqual(window.budgetUSD ?? -1, 3501.85, accuracy: 0.001)
+        XCTAssertEqual(window.remainingUSD ?? -1, 28.64, accuracy: 0.001)
+        XCTAssertEqual(window.percentUsed ?? -1, 3473.21 / 3501.85 * 100, accuracy: 0.001)
+        XCTAssertNil(window.resetsAt)
+    }
+
     // MARK: OpenRouter monthly baseline
 
     func testOpenRouterMonthBaseline() {

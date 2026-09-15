@@ -177,6 +177,9 @@ enum TachyonStatusSnapshot {
     }
 
     private static func displayValue(for window: UsageWindow) -> String {
+        if let remaining = window.remainingUSD {
+            return "\(money(remaining)) left"
+        }
         if let spend = window.spendUSD, let budget = window.budgetUSD {
             return "\(money(spend)) of \(money(budget))"
         }

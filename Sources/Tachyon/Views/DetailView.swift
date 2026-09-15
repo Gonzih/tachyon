@@ -127,6 +127,9 @@ private struct WindowRow: View {
     let isStale: Bool
 
     private var caption: String {
+        if let remaining = window.remainingUSD {
+            return "\(Self.money(remaining)) left"
+        }
         if let spend = window.spendUSD, let budget = window.budgetUSD {
             return "\(Self.money(spend)) of \(Self.money(budget))"
         }
