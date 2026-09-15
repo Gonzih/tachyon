@@ -8,4 +8,5 @@ build/
 .kb/store/
 .kb/workspace/
 .kb/workspaces/
+.kb/locks/
 .kb/config.toml.identity.lock
