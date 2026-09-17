@@ -168,7 +168,7 @@ Re-verified 2026-08-30 against OpenAI's current [app-server manual](https://gith
   provider credential.
 - Hold the provider until TypeSafe publishes a supported account-usage contract
   or supplies a stable API-key route and schema. Task:
-  `tasks/add-typesafe-ai-provider`.
+  `tasks/add-typesafe-ai-provider`. Tracking issue: #1.
 
 ## Cursor — integrated 2026-08-28
 
