@@ -151,6 +151,25 @@ Re-verified 2026-08-30 against OpenAI's current [app-server manual](https://gith
 - The in-app mark is Google's official Antigravity product SVG arch, rendered
   monochrome like the rest of Tachyon's glyphs; no third-party artwork ships.
 
+## TypeSafe AI — account source gap, researched 2026-09-16
+
+- The published OpenAPI 0.2.0 contract exposes only `GET
+  https://api.typesafe.ai/v1/models` and `POST
+  https://api.typesafe.ai/v1/systemone`, both with a bearer API key. Model
+  metadata has no account balance or allowance.
+- A System One response contains `usage.input_tokens` and
+  `usage.output_tokens` for that one request. Tachyon does not originate or
+  proxy those requests, so it cannot honestly aggregate them into an account
+  meter or invent a billing period.
+- The authenticated console has `GET https://console.typesafe.ai/api/usage`
+  (`GET, HEAD, OPTIONS`; unauthenticated requests return `401`), but it is not
+  in the public API contract and documents neither an API-key authentication
+  path nor a response schema. Do not treat a browser session cookie as a
+  provider credential.
+- Hold the provider until TypeSafe publishes a supported account-usage contract
+  or supplies a stable API-key route and schema. Task:
+  `tasks/add-typesafe-ai-provider`.
+
 ## Cursor — integrated 2026-08-28
 
 - Token from read-only `state.vscdb` SQLite `ItemTable` key
