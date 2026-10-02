@@ -209,6 +209,20 @@ Both endpoints take `Authorization: Bearer <key>`; scopes differ:
   non-empty value is a no-op: no revision bump and no accidental baseline reset.
   A key change during an in-flight read discards that result.
 
+- **Free-model catalog watch (verified live 2026-10-02):** `GET /api/v1/models`
+  needs **no credential** — public, cookie-less, no key required — unlike the two
+  authenticated endpoints above. Every entry carries `id`, `name`, `created`
+  (epoch seconds), `context_length`, `architecture.input_modalities` /
+  `output_modalities`, and `pricing.prompt` / `pricing.completion` as **decimal
+  strings** (`"0"`, `"0.0000015"`) — parse them as numbers, never as text
+  compares. The response is ~760 KB raw / ~80 KB gzipped for 465 entries, which
+  is why the watch polls every 15 min rather than on the 120s provider cadence.
+  A model is free only when **both** prices are `0`; some entries carry
+  negative pricing (router credit models) and must not be counted as free.
+  ~22 of 465 entries are free, 17 of them `:free`-suffixed variants of a
+  paid base id. This endpoint reports no quota/spend/count, so it is a
+  catalog watch (`FreeModelWatch`), not a `UsageProvider`, and renders no ring.
+
 ## Competitive field (for positioning)
 
 CodexBar (Swift menu bar, ~90 providers), Limits (Swift menu bar,

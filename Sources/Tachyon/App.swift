@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var edge: EdgeController?
     private var statusItem: NSStatusItem?
     private var updateCheckTask: Task<Void, Never>?
+    private var freeModelTask: Task<Void, Never>?
     private var updateMenuState = UpdateMenuState.idle
     private var notifiedUpdateVersion: String?
     private lazy var statusServer = TachyonStatusServer { [unowned self] in
@@ -79,10 +80,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         installStatusItem()
         startUpdateChecks()
+        startFreeModelWatch()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         updateCheckTask?.cancel()
+        freeModelTask?.cancel()
         statusServer.stop()
         model.stop()
         edge?.stop()
@@ -333,6 +336,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 await checkForUpdates(userInitiated: false)
             }
         }
+    }
+
+    /// Free-model alerts are an app-level catalog watch, not a provider poll:
+    /// `/api/v1/models` has no meter to ring, so it has no place in
+    /// `UsageModel`. The public endpoint needs no credential, so this runs
+    /// whether or not an OpenRouter key exists.
+    ///
+    /// The first reading of an installation only records a baseline — see
+    /// `FreeModelWatch.changes(from:to:)` — so enabling this never replays
+    /// the free models that already existed.
+    private func startFreeModelWatch() {
+        freeModelTask?.cancel()
+        freeModelTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.checkFreeModels()
+                do {
+                    try await Task.sleep(for: .seconds(FreeModelWatch.interval))
+                } catch {
+                    return
+                }
+            }
+        }
+    }
+
+    private func checkFreeModels() async {
+        guard FreeModelWatch.isEnabled() else { return }
+        guard let current = await FreeModelWatch.fetchCatalog() else { return }
+
+        let changes = FreeModelWatch.changes(from: FreeModelWatch.load(), to: current)
+        // Save before notifying: a crash mid-notification must not re-alert on
+        // the next poll, and an unreadable poll must leave the baseline intact.
+        FreeModelWatch.save(current)
+
+        guard let message = FreeModelWatch.message(for: changes) else { return }
+        Log.app.info("free model alert: \(changes.count) change(s)")
+        notify(title: message.title, body: message.body)
     }
 
     @objc private func checkForUpdatesOrUpdate() {

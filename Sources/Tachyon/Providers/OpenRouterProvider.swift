@@ -13,7 +13,11 @@ import Foundation
 ///   cumulative usage minus a month-start baseline Tachyon snapshots locally —
 ///   measured against the budget setting.
 actor OpenRouterProvider: UsageProvider {
-    nonisolated let id = "openrouter"
+    /// The one source of truth for this provider's identity. App-level code
+    /// (the free-model watch, its settings key) needs the id as a value, and
+    /// an actor's instance property is not reachable without an instance.
+    nonisolated static let providerID = "openrouter"
+    nonisolated let id = OpenRouterProvider.providerID
     nonisolated let displayName = "OpenRouter"
     nonisolated let shortName = "OpenRouter"
     nonisolated let glyph = ProviderGlyph.openrouter
@@ -32,10 +36,20 @@ actor OpenRouterProvider: UsageProvider {
             help: "Optional spend ceiling when the key has no limit.",
             kind: .money(defaultValue: nil)
         ),
+        ProviderSetting(
+            key: OpenRouterProvider.freeModelAlertsKey,
+            title: "Free model alerts",
+            help: "Notifies when OpenRouter lists a model priced at $0. Uses the public catalog, no key needed.",
+            kind: .toggle(defaultValue: true)
+        ),
     ]
 
     private static let keyURL = URL(string: "https://openrouter.ai/api/v1/auth/key")!
     private static let creditsURL = URL(string: "https://openrouter.ai/api/v1/credits")!
+
+    /// Declared once, read by `FreeModelWatch`. Both ends of the toggle live
+    /// in this file so renaming the setting cannot silently orphan the watch.
+    nonisolated static let freeModelAlertsKey = "alerts.freeModels"
 
     private struct Credential: Sendable {
         let key: String
