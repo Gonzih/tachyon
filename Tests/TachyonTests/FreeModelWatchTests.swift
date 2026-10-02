@@ -313,28 +313,27 @@ final class FreeModelWatchTests: XCTestCase {
 
     // MARK: - Message
 
-    func testMessageNamesModelAndShowsOnlyReportedFacts() throws {
+    /// The catalog's own model card leads with the model's name, then the id,
+    /// then a price / context / modalities row. Tachyon mirrors that. Every
+    /// fact lives in the body: a macOS subtitle displaces the body entirely in
+    /// a collapsed banner, which is where an alert is actually read.
+    func testMessageMirrorsTheCatalogModelCard() throws {
         let bunny = FreeModelWatch.Model(
             id: "stealth/space-bunny-alpha",
             name: "Space Bunny Alpha",
             contextLength: 1_000_000,
-            created: Date(timeIntervalSince1970: 900),
-            inputModalities: ["text", "image"],
+            created: Date(timeIntervalSince1970: 1_790_174_884),
+            inputModalities: ["text", "image", "video"],
             outputModalities: ["text"]
         )
-        let now = Date(timeIntervalSince1970: 960)
 
-        let message = try XCTUnwrap(FreeModelWatch.message(for: [.newFree(bunny)], now: now))
+        let message = try XCTUnwrap(FreeModelWatch.message(for: [.newFree(bunny)]))
 
-        XCTAssertEqual(message.title, "New free model on OpenRouter")
-        // "Listed", not "Released": `created` is when OpenRouter listed the
-        // entry, which is not necessarily when the vendor shipped the model.
+        XCTAssertEqual(message.title, "New free model: Space Bunny Alpha")
         XCTAssertEqual(message.body, """
         stealth/space-bunny-alpha
-        1,000,000 context
-        text+image in · text out
-        Listed 1m ago
-        $0 in · $0 out
+        Free · 1M context · accepts 🔤🖼🎥
+        Listed Sep 23, 2026
         """)
     }
 
@@ -346,7 +345,23 @@ final class FreeModelWatchTests: XCTestCase {
 
         let message = try XCTUnwrap(FreeModelWatch.message(for: [.newFree(bare)]))
 
-        XCTAssertEqual(message.body, "a/bare\n$0 in · $0 out")
+        // Only the id and the fact Tachyon actually verified survive.
+        XCTAssertEqual(message.body, "a/bare\nFree")
+    }
+
+    /// A glyph must never stand in for a modality Tachyon cannot name — an
+    /// unrecognized one shows its own name rather than silently vanishing.
+    func testUnknownModalityKeepsItsOwnName() throws {
+        let odd = FreeModelWatch.Model(
+            id: "a/odd", name: "A Odd", contextLength: nil,
+            created: nil,
+            inputModalities: ["text", "hologram"],
+            outputModalities: ["text"]
+        )
+
+        let message = try XCTUnwrap(FreeModelWatch.message(for: [.newFree(odd)]))
+
+        XCTAssertEqual(message.body, "a/odd\nFree · accepts 🔤hologram")
     }
 
     func testMessageDistinguishesTransitions() throws {
@@ -363,6 +378,10 @@ final class FreeModelWatchTests: XCTestCase {
             try XCTUnwrap(FreeModelWatch.message(for: [.freeVariantAdded(one)])).title,
             "New free variant: one"
         )
+        XCTAssertEqual(
+            try XCTUnwrap(FreeModelWatch.message(for: [.newFree(one)])).title,
+            "New free model: one"
+        )
     }
 
     func testBatchedMessageCountsAndTruncates() throws {
@@ -370,9 +389,10 @@ final class FreeModelWatchTests: XCTestCase {
 
         let message = try XCTUnwrap(FreeModelWatch.message(for: changes))
 
-        XCTAssertEqual(message.title, "7 new free OpenRouter models")
+        XCTAssertEqual(message.title, "7 new free models on OpenRouter")
         XCTAssertEqual(message.body, "1, 2, 3, 4, 5 +2 more")
     }
+
 
     func testNoChangesMeansNoNotification() {
         XCTAssertNil(FreeModelWatch.message(for: []))

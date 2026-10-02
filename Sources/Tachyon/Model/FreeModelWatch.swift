@@ -257,25 +257,30 @@ struct FreeModelWatch: Sendable {
 
     // MARK: - Notification text
 
-    static func message(for changes: [Change], now: Date = Date()) -> Message? {
+    /// macOS renders a collapsed banner as title plus ONE more line. Setting a
+    /// subtitle displaces the body entirely, so every fact has to live in the
+    /// body — which does wrap and render across as many lines as it needs.
+    static func message(for changes: [Change]) -> Message? {
         if let only = changes.first, changes.count == 1 {
-            return singleMessage(for: only, now: now)
+            return singleMessage(for: only)
         }
         guard !changes.isEmpty else { return nil }
         let listed = changes.prefix(5).map(\.model.name).joined(separator: ", ")
         let overflow = changes.count > 5 ? " +\(changes.count - 5) more" : ""
         return Message(
-            title: "\(changes.count) new free OpenRouter models",
+            title: "\(changes.count) new free models on OpenRouter",
             body: listed + overflow
         )
     }
 
-    private static func singleMessage(for change: Change, now: Date) -> Message {
+    /// The model's own name leads: `stealth/space-bunny-alpha` is the id you
+    /// paste into a request, not the thing you recognize.
+    private static func singleMessage(for change: Change) -> Message {
         let model = change.model
         let title: String
         switch change {
         case .newFree:
-            title = "New free model on OpenRouter"
+            title = "New free model: \(model.name)"
         case .becameFree:
             title = "\(model.name) is now free"
         case .nowFree:
@@ -283,28 +288,72 @@ struct FreeModelWatch: Sendable {
         case .freeVariantAdded:
             title = "New free variant: \(model.name)"
         }
-        return Message(title: title, body: body(for: model, now: now))
+        return Message(title: title, body: body(for: model))
     }
 
-    private static func body(for model: Model, now: Date) -> String {
+    /// Mirrors the catalog's own model card: id, then the price / context /
+    /// modalities row, then when it was listed.
+    private static func body(for model: Model) -> String {
         var lines = [model.id]
+        var facts = ["Free"]
         if let context = model.contextLength {
-            lines.append("\(context.formatted()) context")
+            facts.append("\(compactCount(context)) context")
         }
-        if !model.inputModalities.isEmpty || !model.outputModalities.isEmpty {
-            let input = model.inputModalities.isEmpty
-                ? "–" : model.inputModalities.joined(separator: "+")
-            let output = model.outputModalities.isEmpty
-                ? "–" : model.outputModalities.joined(separator: "+")
-            lines.append("\(input) in · \(output) out")
+        if !model.inputModalities.isEmpty {
+            facts.append("accepts \(model.inputModalities.map(modalityGlyph).joined(separator: ""))")
         }
+        lines.append(facts.joined(separator: " · "))
         if let created = model.created {
-            // `created` is the catalog entry's timestamp, so this is when
-            // OpenRouter listed it. The vendor may have shipped it earlier.
-            lines.append("Listed \(ResetFormat.relative(created, now: now))")
+            // OpenRouter labels this field "Released" on its own model page.
+            // Tachyon says "Listed" because a vendor may ship a model before
+            // the catalog gains an entry for it.
+            lines.append("Listed \(shortDate(created))")
         }
-        lines.append("$0 in · $0 out")
         return lines.joined(separator: "\n")
+    }
+
+    /// The catalog shows bare modality glyphs on its own model card, so the
+    /// alert reads the same way as the page it points at. An unrecognized
+    /// modality falls through to its own name rather than being dropped: a
+    /// glyph must never stand in for something Tachyon cannot name.
+    private static func modalityGlyph(_ modality: String) -> String {
+        switch modality.lowercased() {
+        case "text": return "🔤"
+        case "image": return "🖼"
+        case "video": return "🎥"
+        case "audio": return "🔊"
+        case "file": return "📄"
+        default: return modality
+        }
+    }
+
+
+    /// "Sep 23, 2026" — an absolute date is what a reader compares against
+    /// "released last week" on the catalog page. "8d ago" is only meaningful
+    /// for the few minutes after the alert, and a notification outlives that.
+    private static func shortDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: date)
+    }
+
+    /// 1,000,000 → "1M". A notification is not a place for grouped digits.
+    private static func compactCount(_ value: Int) -> String {
+        guard value > 0 else { return "0" }
+        if value >= 1_000_000 {
+            let millions = Double(value) / 1_000_000
+            return millions == millions.rounded()
+                ? "\(Int(millions))M"
+                : String(format: "%.1fM", millions)
+        }
+        if value >= 1_000 {
+            let thousands = Double(value) / 1_000
+            return thousands == thousands.rounded()
+                ? "\(Int(thousands))K"
+                : String(format: "%.1fK", thousands)
+        }
+        return "\(value)"
     }
 
     // MARK: - Baseline persistence
