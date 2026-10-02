@@ -83,17 +83,33 @@ final class FreeModelWatchTests: XCTestCase {
         XCTAssertEqual(snapshot.paid, ["vendor/imaged", "vendor/cheap-images"])
     }
 
-    /// `overrides` is a nested object, not a price. Ignoring non-numeric
-    /// fields keeps real free models out of the paid bucket.
-    func testNonNumericPricingFieldsAreNotTreatedAsPrices() throws {
+    /// `overrides` is a list of tiered prices, not a non-price object: a $0
+    /// base price with a paid tier above a threshold is not free.
+    func testPaidTierInsideOverridesDisqualifiesAModel() throws {
         let data = Self.catalog([
-            Self.priced("a/with-overrides", prompt: 0, completion: 0,
-                        extra: ["overrides": "{\"context_window\":null}"]),
+            Self.priced("a/tiered", prompt: 0, completion: 0, extra: [
+                "overrides": "[{\"min_prompt_tokens\":272000,\"prompt\":\"0.000004\",\"completion\":\"0.000015\"}]",
+            ]),
         ])
 
         let snapshot = try XCTUnwrap(FreeModelWatch.parse(data))
 
-        XCTAssertEqual(Array(snapshot.free.keys), ["a/with-overrides"])
+        XCTAssertTrue(snapshot.free.isEmpty)
+        XCTAssertEqual(snapshot.paid, ["a/tiered"])
+    }
+
+    /// `min_prompt_tokens` is a threshold, not a price. Counting it would mark
+    /// every tiered model paid regardless of its rates.
+    func testTierThresholdAloneDoesNotDisqualifyAModel() throws {
+        let data = Self.catalog([
+            Self.priced("a/zero-tiers", prompt: 0, completion: 0, extra: [
+                "overrides": "[{\"min_prompt_tokens\":200000,\"prompt\":\"0\",\"completion\":\"0\"}]",
+            ]),
+        ])
+
+        let snapshot = try XCTUnwrap(FreeModelWatch.parse(data))
+
+        XCTAssertEqual(Array(snapshot.free.keys), ["a/zero-tiers"])
     }
 
     func testUnreadablePricingIsKeptDistinctFromPaid() throws {
@@ -141,6 +157,31 @@ final class FreeModelWatchTests: XCTestCase {
 
         XCTAssertEqual(merged, full)
         XCTAssertEqual(FreeModelWatch.changes(from: full, to: merged), [])
+    }
+
+    /// A known free model that briefly ships an unreadable pricing block must
+    /// not be demoted to `unpriced`, or recovering prices would replay it as
+    /// fresh news for a model that has been free all along.
+    func testKnownModelWithTransientUnreadablePricingKeepsItsBucket() {
+        let previous = snapshot(free: ["a/one": model("a/one")], paid: [], unpriced: [])
+        let current = snapshot(free: [:], paid: [], unpriced: ["a/one"])
+
+        let merged = FreeModelWatch.merged(current: current, preserving: previous)
+
+        XCTAssertEqual(Array(merged.free.keys), ["a/one"])
+        XCTAssertTrue(merged.unpriced.isEmpty)
+        XCTAssertEqual(FreeModelWatch.changes(from: previous, to: merged), [])
+    }
+
+    /// A model never seen before with unreadable pricing stays genuinely
+    /// unpriced — there is nothing to carry forward.
+    func testUnknownModelWithUnreadablePricingStaysUnpriced() {
+        let previous = snapshot(free: [:], paid: [], unpriced: [])
+        let current = snapshot(free: [:], paid: [], unpriced: ["a/new"])
+
+        let merged = FreeModelWatch.merged(current: current, preserving: previous)
+
+        XCTAssertEqual(merged.unpriced, ["a/new"])
     }
 
     /// Each id must live in exactly one bucket: a model the catalog still

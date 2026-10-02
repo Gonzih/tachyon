@@ -220,8 +220,12 @@ Both endpoints take `Authorization: Bearer <key>`; scopes differ:
   A model is free only when **every readable pricing field is `0`**, not just the
   token pair: the payload also carries `image`, `audio`, `audio_output`,
   `web_search` and `input_cache_read`, so $0 tokens plus a per-image fee is not
-  free. Non-numeric entries such as `overrides` are not prices. Some entries
-  carry negative pricing (router credit models) and must not be counted as free.
+  free. `overrides` is **not** a non-price — it is a list of tiered price
+  objects (`min_prompt_tokens` plus real `prompt`/`completion` rates); 80 entries
+  carry it, so a $0 base price with a paid tier above a threshold is not free.
+  `min_prompt_tokens` is the one key that is a threshold rather than a price and
+  must be excluded. Some entries carry negative pricing (router credit models)
+  and must not be counted as free.
   All 22 currently-free entries declare only `prompt`/`completion`, so the extra
   fields are a latent guard rather than an active filter. If *no* entry yields a
   readable price the payload has drifted, and the reading is discarded instead of

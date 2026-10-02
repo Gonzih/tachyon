@@ -123,19 +123,34 @@ struct FreeModelWatch: Sendable {
 
     /// Free means *every* price Tachyon can read is zero, not just the token
     /// pair. The catalog also carries `image`, `audio`, `audio_output`,
-    /// `web_search` and cache fields, so a model with $0 tokens and a
-    /// per-image fee is not free. Non-numeric entries such as `overrides` are
-    /// skipped: they are not prices.
+    /// `web_search` and cache fields, so $0 tokens with a per-image fee is not
+    /// free. `overrides` is a list of tiered prices keyed by
+    /// `min_prompt_tokens`, so it nests further prices rather than being
+    /// noise: a $0 base price with a paid tier above a threshold is not free.
     static func price(of entry: JSONValue) -> PriceVerdict {
         let pricing = entry["pricing"]
         guard pricing.exists else { return .unreadable }
         var readAny = false
-        for (_, value) in pricing.dictionary {
-            guard let number = value.double else { continue }
+        for number in numericPrices(of: pricing) {
             readAny = true
             if number != 0 { return .paid }
         }
         return readAny ? .free : .unreadable
+    }
+
+    /// `min_prompt_tokens` is a tier threshold, not a price — counting it
+    /// would make every tiered model look paid.
+    private static let nonPriceKeys: Set<String> = ["min_prompt_tokens"]
+
+    /// Every finite number reachable inside a pricing value, at any depth, so
+    /// an `overrides` tier cannot hide behind a numeric-looking parent.
+    private static func numericPrices(of value: JSONValue, key: String? = nil) -> [Double] {
+        if let key, nonPriceKeys.contains(key) { return [] }
+        if let number = value.double { return [number] }
+        if let dictionary = value.raw as? [String: Any] {
+            return dictionary.flatMap { numericPrices(of: JSONValue($0.value), key: $0.key) }
+        }
+        return value.array.flatMap { numericPrices(of: $0) }
     }
 
     /// A catalog in which not one price was readable means the schema moved,
@@ -183,15 +198,27 @@ struct FreeModelWatch: Sendable {
     /// make every long-standing free model look new on the next full poll.
     /// An id present as `paid` still moves out, so a genuine price drop is
     /// reported.
+    ///
+    /// The cost is that a delisted id is remembered forever, so the baseline
+    /// grows slowly with catalog churn. At ~465 entries today that is a few KB
+    /// of ids; it is the right trade against replaying the catalog as news.
     static func merged(current: Snapshot, preserving previous: Snapshot?) -> Snapshot {
         guard let previous else { return current }
+
+        var current = current
+        // A known model that briefly ships an unreadable pricing block is not
+        // evidence of anything. Treat it as absent rather than letting it fall
+        // into `unpriced`, which would replay stale news once prices recover.
+        for id in current.unpriced
+        where previous.free[id] != nil || previous.paid.contains(id) {
+            current.unpriced.remove(id)
+        }
 
         func isAbsent(_ id: String) -> Bool {
             current.free[id] == nil
                 && current.paid.contains(id) == false
                 && current.unpriced.contains(id) == false
         }
-
         var merged = current
         // An id present in any current bucket already has a fresh reading and
         // is never carried forward — otherwise a model the catalog still
@@ -286,7 +313,14 @@ struct FreeModelWatch: Sendable {
         guard let data = Settings.dataSetting(
             snapshotKey, provider: OpenRouterProvider.providerID, defaults: defaults
         ) else { return nil }
-        return try? JSONDecoder().decode(Snapshot.self, from: data)
+        guard let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else {
+            // A stored baseline that no longer decodes — a shape change between
+            // versions — is not the same as a fresh install. Say so instead of
+            // letting the next poll re-baseline in silence.
+            Log.model.error("openrouter free-model baseline unreadable")
+            return nil
+        }
+        return snapshot
     }
 
     static func save(_ snapshot: Snapshot, defaults: UserDefaults = Settings.defaults) {
