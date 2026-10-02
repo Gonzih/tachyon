@@ -349,8 +349,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func startFreeModelWatch() {
         freeModelTask?.cancel()
         freeModelTask = Task { [weak self] in
+            guard let self else { return }
             while !Task.isCancelled {
-                await self?.checkFreeModels()
+                await self.checkFreeModels()
                 do {
                     try await Task.sleep(for: .seconds(FreeModelWatch.interval))
                 } catch {
@@ -363,11 +364,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func checkFreeModels() async {
         guard FreeModelWatch.isEnabled() else { return }
         guard let current = await FreeModelWatch.fetchCatalog() else { return }
+        // Quitting during the request must not write a baseline or pop a
+        // notification for work the user did not ask to finish.
+        guard !Task.isCancelled else { return }
 
-        let changes = FreeModelWatch.changes(from: FreeModelWatch.load(), to: current)
+        let previous = FreeModelWatch.load()
+        let baseline = FreeModelWatch.merged(current: current, preserving: previous)
+        let changes = FreeModelWatch.changes(from: previous, to: baseline)
         // Save before notifying: a crash mid-notification must not re-alert on
-        // the next poll, and an unreadable poll must leave the baseline intact.
-        FreeModelWatch.save(current)
+        // the next poll, and an unreadable poll leaves the baseline untouched.
+        FreeModelWatch.save(baseline)
 
         guard let message = FreeModelWatch.message(for: changes) else { return }
         Log.app.info("free model alert: \(changes.count) change(s)")

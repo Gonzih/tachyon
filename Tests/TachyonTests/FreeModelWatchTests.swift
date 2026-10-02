@@ -4,15 +4,19 @@ import XCTest
 
 final class FreeModelWatchTests: XCTestCase {
     private var defaults: UserDefaults!
-    private let suite = "dev.gonzih.tachyon.tests.freeModelWatch"
+    private var suiteName = ""
 
-    override func setUp() {
-        super.setUp()
-        UserDefaults.standard.removePersistentDomain(forName: suite)
-        defaults = UserDefaults(suiteName: suite)
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        suiteName = "dev.gonzih.tachyon.tests.\(UUID().uuidString)"
+        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     }
 
     override func tearDown() {
+        if !suiteName.isEmpty {
+            defaults?.removePersistentDomain(forName: suiteName)
+            suiteName = ""
+        }
         defaults = nil
         super.tearDown()
     }
@@ -20,18 +24,17 @@ final class FreeModelWatchTests: XCTestCase {
     // MARK: - Parsing
 
     func testParsesFreeAndPaidModelsFromRealPayloadShape() throws {
-        let data = Self.catalog(
-            free: [Self.entry(id: "stealth/space-bunny-alpha", name: "Space Bunny Alpha",
-                              prompt: "0", completion: "0", context: 1_000_000,
-                              created: 1_790_950_024,
-                              input: ["text", "image"], output: ["text"])],
-            paid: [Self.entry(id: "openai/gpt-5", prompt: "0.0000015", completion: "0.000006")]
-        )
+        let data = Self.catalog([
+            Self.free("stealth/space-bunny-alpha", name: "Space Bunny Alpha", context: 1_000_000,
+                      created: 1_790_950_024, input: ["text", "image"], output: ["text"]),
+            Self.priced("openai/gpt-5", prompt: "0.0000015", completion: "0.000006"),
+        ])
 
         let snapshot = try XCTUnwrap(FreeModelWatch.parse(data))
 
         XCTAssertEqual(Array(snapshot.free.keys), ["stealth/space-bunny-alpha"])
         XCTAssertEqual(snapshot.paid, ["openai/gpt-5"])
+        XCTAssertTrue(snapshot.unpriced.isEmpty)
         let bunny = try XCTUnwrap(snapshot.free["stealth/space-bunny-alpha"])
         XCTAssertEqual(bunny.name, "Space Bunny Alpha")
         XCTAssertEqual(bunny.contextLength, 1_000_000)
@@ -40,27 +43,127 @@ final class FreeModelWatchTests: XCTestCase {
         XCTAssertEqual(bunny.created, Date(timeIntervalSince1970: 1_790_950_024))
     }
 
-    /// Free to read but not to answer is not free. A model Tachyon cannot
-    /// price at all is not free either, and must not be reported as one.
-    func testRequiresBothPricesToBeZero() throws {
-        let data = Self.catalog(
-            free: [],
-            paid: [
-                Self.entry(id: "half/free", prompt: "0", completion: "0.0000004"),
-                Self.entry(id: "priced/missing", prompt: nil, completion: nil),
-                Self.entry(id: "negative/router", prompt: "-1", completion: "-1"),
-            ]
-        )
+    /// The API sends prices as decimal strings today, but a numeric `0` means
+    /// the same thing and must not be read as unreadable.
+    func testNumericZeroPriceIsStillFree() throws {
+        let data = Self.catalog([Self.priced("a/numeric", prompt: 0, completion: 0)])
+
+        let snapshot = try XCTUnwrap(FreeModelWatch.parse(data))
+
+        XCTAssertEqual(Array(snapshot.free.keys), ["a/numeric"])
+    }
+
+    /// Free to read but not to answer is not free, and a negative price is a
+    /// router credit rather than a giveaway.
+    func testRequiresEveryReadablePriceToBeZero() throws {
+        let data = Self.catalog([
+            Self.priced("half/free", prompt: 0, completion: "0.0000004"),
+            Self.priced("negative/router", prompt: -1, completion: -1),
+        ])
 
         let snapshot = try XCTUnwrap(FreeModelWatch.parse(data))
 
         XCTAssertTrue(snapshot.free.isEmpty)
-        XCTAssertEqual(snapshot.paid, ["half/free", "priced/missing", "negative/router"])
+        XCTAssertEqual(snapshot.paid, ["half/free", "negative/router"])
+    }
+
+    /// The live catalog carries `image`, `audio`, `audio_output`,
+    /// `web_search` and cache fields. $0 tokens plus a per-image fee is not
+    /// free, and announcing it as free would be a false claim.
+    func testNonZeroNonTokenPriceDisqualifiesAModel() throws {
+        let data = Self.catalog([
+            Self.priced("vendor/imaged", prompt: 0, completion: 0, extra: ["image": "0.0072"]),
+            Self.priced("vendor/cheap-images", prompt: 0, completion: 0,
+                        extra: ["image": "0", "web_search": "0.005"]),
+        ])
+
+        let snapshot = try XCTUnwrap(FreeModelWatch.parse(data))
+
+        XCTAssertTrue(snapshot.free.isEmpty)
+        XCTAssertEqual(snapshot.paid, ["vendor/imaged", "vendor/cheap-images"])
+    }
+
+    /// `overrides` is a nested object, not a price. Ignoring non-numeric
+    /// fields keeps real free models out of the paid bucket.
+    func testNonNumericPricingFieldsAreNotTreatedAsPrices() throws {
+        let data = Self.catalog([
+            Self.priced("a/with-overrides", prompt: 0, completion: 0,
+                        extra: ["overrides": "{\"context_window\":null}"]),
+        ])
+
+        let snapshot = try XCTUnwrap(FreeModelWatch.parse(data))
+
+        XCTAssertEqual(Array(snapshot.free.keys), ["a/with-overrides"])
+    }
+
+    func testUnreadablePricingIsKeptDistinctFromPaid() throws {
+        let data = Self.catalog([
+            Self.priced("a/missing", prompt: nil, completion: nil),
+            Self.free("a/free"),
+        ])
+
+        let snapshot = try XCTUnwrap(FreeModelWatch.parse(data))
+
+        XCTAssertEqual(snapshot.unpriced, ["a/missing"])
+        XCTAssertTrue(snapshot.paid.isEmpty)
+    }
+
+    /// If not one price in the whole catalog was readable, the schema moved.
+    /// Returning a snapshot would demote every known free model to `unpriced`
+    /// and re-alert on all of them once the shape returns.
+    func testCatalogWithNoReadablePriceIsRejectedEntirely() {
+        let data = Self.catalog([
+            Self.priced("a/one", prompt: nil, completion: nil),
+            Self.priced("a/two", prompt: nil, completion: nil),
+        ])
+
+        XCTAssertNil(FreeModelWatch.parse(data))
     }
 
     func testRejectsUnreadablePayload() {
         XCTAssertNil(FreeModelWatch.parse(Data("not json".utf8)))
-        XCTAssertNil(FreeModelWatch.parse(Self.catalog(free: [], paid: [])))
+        XCTAssertNil(FreeModelWatch.parse(Self.catalog([])))
+    }
+
+    // MARK: - Baseline merging
+
+    /// A truncated 200 must not shrink the baseline: the next full poll would
+    /// otherwise report every long-standing free model as brand new.
+    func testTruncatedCatalogDoesNotForgetKnownFreeModels() throws {
+        let full = snapshot(
+            free: ["a/one": model("a/one"), "a/two": model("a/two")],
+            paid: ["a/three"],
+            unpriced: ["a/four"]
+        )
+        let truncated = snapshot(free: ["a/one": model("a/one")], paid: [], unpriced: [])
+
+        let merged = FreeModelWatch.merged(current: truncated, preserving: full)
+
+        XCTAssertEqual(merged, full)
+        XCTAssertEqual(FreeModelWatch.changes(from: full, to: merged), [])
+    }
+
+    /// Each id must live in exactly one bucket: a model the catalog still
+    /// reports as paid cannot also linger in `free` because of a carry-forward.
+    /// A genuine price drop is still reported.
+    func testMergingHonorsARealPriceDropWithoutDuplicatingBuckets() {
+        let previous = snapshot(free: ["a/one": model("a/one")], paid: ["a/two"], unpriced: [])
+        let current = snapshot(free: ["a/two": model("a/two")], paid: ["a/one"], unpriced: [])
+
+        let merged = FreeModelWatch.merged(current: current, preserving: previous)
+
+        XCTAssertEqual(merged, current)
+        XCTAssertFalse(merged.free.keys.contains("a/one"))
+        XCTAssertEqual(
+            FreeModelWatch.changes(from: previous, to: merged),
+            [.becameFree(model("a/two"))]
+        )
+    }
+
+    func testMergingWithoutAPreviousSnapshotIsIdentity() {
+        let current = snapshot(free: ["a/one": model("a/one")], paid: [], unpriced: [])
+
+        XCTAssertEqual(FreeModelWatch.merged(current: current, preserving: nil), current)
     }
 
     // MARK: - Diffing
@@ -68,48 +171,65 @@ final class FreeModelWatchTests: XCTestCase {
     /// The baseline run must be silent: OpenRouter already lists ~22 free
     /// models, and replaying them on first launch is noise, not news.
     func testFirstReadingRecordsBaselineWithoutAlerting() {
-        let current = snapshot(free: ["a/one": model("a/one")], paid: ["a/two"])
+        let current = snapshot(free: ["a/one": model("a/one")], paid: ["a/two"], unpriced: [])
         XCTAssertEqual(FreeModelWatch.changes(from: nil, to: current), [])
     }
 
     func testDetectsNewFreeModel() {
-        let previous = snapshot(free: ["a/one": model("a/one")], paid: ["a/two"])
+        let previous = snapshot(free: ["a/one": model("a/one")], paid: ["a/two"], unpriced: [])
         let current = snapshot(
             free: [
                 "a/one": model("a/one"),
                 "stealth/space-bunny-alpha": model("stealth/space-bunny-alpha"),
             ],
-            paid: ["a/two"]
+            paid: ["a/two"],
+            unpriced: []
         )
 
-        let changes = FreeModelWatch.changes(from: previous, to: current)
-
-        XCTAssertEqual(changes, [.newFree(model("stealth/space-bunny-alpha"))])
+        XCTAssertEqual(
+            FreeModelWatch.changes(from: previous, to: current),
+            [.newFree(model("stealth/space-bunny-alpha"))]
+        )
     }
 
     func testDetectsPaidModelBecomingFree() {
-        let previous = snapshot(free: [:], paid: ["a/one"])
-        let current = snapshot(free: ["a/one": model("a/one")], paid: [])
+        let previous = snapshot(free: [:], paid: ["a/one"], unpriced: [])
+        let current = snapshot(free: ["a/one": model("a/one")], paid: [], unpriced: [])
+
+        XCTAssertEqual(FreeModelWatch.changes(from: previous, to: current), [.becameFree(model("a/one"))])
+    }
+
+    /// A model whose price could not be read has no observed transition, so it
+    /// must not borrow the "is now free" wording.
+    func testUnpricedModelBecomingFreeClaimsNoTransition() {
+        let previous = snapshot(free: [:], paid: [], unpriced: ["a/one"])
+        let current = snapshot(free: ["a/one": model("a/one")], paid: [], unpriced: [])
 
         let changes = FreeModelWatch.changes(from: previous, to: current)
 
-        XCTAssertEqual(changes, [.becameFree(model("a/one"))])
+        XCTAssertEqual(changes, [.nowFree(model("a/one"))])
+        XCTAssertEqual(changes.first?.model.name, "one")
     }
 
     func testDetectsFreeVariantOfKnownModel() {
-        let previous = snapshot(free: [:], paid: ["qwen/qwen3-8b"])
-        let current = snapshot(free: ["qwen/qwen3-8b:free": model("qwen/qwen3-8b:free")], paid: ["qwen/qwen3-8b"])
+        let previous = snapshot(free: [:], paid: ["qwen/qwen3-8b"], unpriced: [])
+        let current = snapshot(
+            free: ["qwen/qwen3-8b:free": model("qwen/qwen3-8b:free")],
+            paid: ["qwen/qwen3-8b"],
+            unpriced: []
+        )
 
-        let changes = FreeModelWatch.changes(from: previous, to: current)
-
-        XCTAssertEqual(changes, [.freeVariantAdded(model("qwen/qwen3-8b:free"))])
+        XCTAssertEqual(
+            FreeModelWatch.changes(from: previous, to: current),
+            [.freeVariantAdded(model("qwen/qwen3-8b:free"))]
+        )
     }
 
     /// A `:free` id for a base Tachyon never saw is a new model, not a variant
     /// of something it can vouch for.
     func testFreeVariantOfUnknownBaseIsANewModel() {
-        let previous = snapshot(free: [:], paid: [])
-        let current = snapshot(free: ["ghost/base:free": model("ghost/base:free")], paid: [])
+        let previous = snapshot(free: [:], paid: [], unpriced: [])
+        let current = snapshot(free: ["ghost/base:free": model("ghost/base:free")], paid: [], unpriced: [])
 
         XCTAssertEqual(
             FreeModelWatch.changes(from: previous, to: current),
@@ -117,16 +237,35 @@ final class FreeModelWatchTests: XCTestCase {
         )
     }
 
+    /// The base was already free, so the variant is genuinely new rather than a
+    /// price drop on the base.
+    func testFreeVariantOfAlreadyFreeBaseIsStillANewModel() {
+        let previous = snapshot(free: ["qwen/base": model("qwen/base")], paid: [], unpriced: [])
+        let current = snapshot(
+            free: [
+                "qwen/base": model("qwen/base"),
+                "qwen/base:free": model("qwen/base:free"),
+            ],
+            paid: [],
+            unpriced: []
+        )
+
+        XCTAssertEqual(
+            FreeModelWatch.changes(from: previous, to: current),
+            [.newFree(model("qwen/base:free"))]
+        )
+    }
+
     /// A model that goes back to being paid is not news about free models.
     func testIgnoresModelsThatStopBeingFree() {
-        let previous = snapshot(free: ["a/one": model("a/one")], paid: [])
-        let current = snapshot(free: [:], paid: ["a/one"])
+        let previous = snapshot(free: ["a/one": model("a/one")], paid: [], unpriced: [])
+        let current = snapshot(free: [:], paid: ["a/one"], unpriced: [])
 
         XCTAssertEqual(FreeModelWatch.changes(from: previous, to: current), [])
     }
 
     func testUnchangedCatalogProducesNoChanges() {
-        let catalog = snapshot(free: ["a/one": model("a/one")], paid: ["a/two"])
+        let catalog = snapshot(free: ["a/one": model("a/one")], paid: ["a/two"], unpriced: ["a/three"])
 
         XCTAssertEqual(FreeModelWatch.changes(from: catalog, to: catalog), [])
     }
@@ -147,11 +286,13 @@ final class FreeModelWatchTests: XCTestCase {
         let message = try XCTUnwrap(FreeModelWatch.message(for: [.newFree(bunny)], now: now))
 
         XCTAssertEqual(message.title, "New free model on OpenRouter")
+        // "Listed", not "Released": `created` is when OpenRouter listed the
+        // entry, which is not necessarily when the vendor shipped the model.
         XCTAssertEqual(message.body, """
         stealth/space-bunny-alpha
         1,000,000 context
         text+image in · text out
-        Released 1m ago
+        Listed 1m ago
         $0 in · $0 out
         """)
     }
@@ -174,6 +315,10 @@ final class FreeModelWatchTests: XCTestCase {
             "one is now free"
         )
         XCTAssertEqual(
+            try XCTUnwrap(FreeModelWatch.message(for: [.nowFree(one)])).title,
+            "one is free on OpenRouter"
+        )
+        XCTAssertEqual(
             try XCTUnwrap(FreeModelWatch.message(for: [.freeVariantAdded(one)])).title,
             "New free variant: one"
         )
@@ -192,21 +337,15 @@ final class FreeModelWatchTests: XCTestCase {
         XCTAssertNil(FreeModelWatch.message(for: []))
     }
 
-    /// The watch must read the key the Settings pane writes. Drift here is
-    /// silent in the app: the toggle moves, the watch never hears it.
-    func testWatchReadsTheKeyTheProviderDeclares() {
-        defaults.set(false, forKey: Self.alertsKey)
-        XCTAssertFalse(FreeModelWatch.isEnabled(defaults: defaults))
-
-        defaults.set(true, forKey: Self.alertsKey)
-        XCTAssertTrue(FreeModelWatch.isEnabled(defaults: defaults))
-    }
-
     // MARK: - Persistence and gating
 
     /// A lost baseline would replay every currently-free model as brand new.
     func testSnapshotSurvivesRoundTrip() throws {
-        let catalog = snapshot(free: ["a/one": model("a/one")], paid: ["a/two", "a/three"])
+        let catalog = snapshot(
+            free: ["a/one": model("a/one")],
+            paid: ["a/two", "a/three"],
+            unpriced: ["a/four"]
+        )
 
         FreeModelWatch.save(catalog, defaults: defaults)
 
@@ -217,12 +356,16 @@ final class FreeModelWatchTests: XCTestCase {
         XCTAssertNil(FreeModelWatch.load(defaults: defaults))
     }
 
-    func testAlertIsOnByDefault() {
+    /// The watch must honor the same key the Settings pane writes. Drift here
+    /// is silent in the app: the toggle moves, the watch never hears it.
+    func testAlertFollowsTheToggleTheProviderDeclares() {
         XCTAssertTrue(FreeModelWatch.isEnabled(defaults: defaults))
-    }
 
-    private static var alertsKey: String {
-        "provider.\(OpenRouterProvider.providerID).\(OpenRouterProvider.freeModelAlertsKey)"
+        defaults.set(
+            false,
+            forKey: "provider.\(OpenRouterProvider.providerID).\(OpenRouterProvider.freeModelAlertsKey)"
+        )
+        XCTAssertFalse(FreeModelWatch.isEnabled(defaults: defaults))
     }
 
     // MARK: - Fixtures
@@ -238,38 +381,92 @@ final class FreeModelWatchTests: XCTestCase {
         )
     }
 
-    private func snapshot(free: [String: FreeModelWatch.Model], paid: Set<String>) -> FreeModelWatch.Snapshot {
-        FreeModelWatch.Snapshot(free: free, paid: paid)
+    private func snapshot(
+        free: [String: FreeModelWatch.Model],
+        paid: Set<String>,
+        unpriced: Set<String>
+    ) -> FreeModelWatch.Snapshot {
+        FreeModelWatch.Snapshot(free: free, paid: paid, unpriced: unpriced)
     }
 
-    private static func catalog(free: [String], paid: [String]) -> Data {
-        let entries = free + paid
-        return Data("{\"data\":[\(entries.joined(separator: ","))]}".utf8)
+    private struct Entry {
+        let id: String
+        let name: String
+        let context: Int
+        let created: Int
+        let input: [String]
+        let output: [String]
+        let pricing: [String: String]
     }
 
-    private static func entry(
-        id: String,
+    private static func free(
+        _ id: String,
         name: String? = nil,
-        prompt: String?,
-        completion: String?,
         context: Int = 128_000,
         created: Int? = 1_700_000_000,
         input: [String] = ["text"],
         output: [String] = ["text"]
-    ) -> String {
-        func quoted(_ value: String?) -> String {
-            value.map { "\"\($0)\"" } ?? "null"
+    ) -> Entry {
+        priced(
+            id, name: name, prompt: "0", completion: "0",
+            context: context, created: created, input: input, output: output
+        )
+    }
+
+    /// Built as a dictionary rather than by string interpolation: escaped
+    /// quotes inside a multiline literal's interpolation reach the JSON
+    /// verbatim, which silently corrupts numeric-versus-string price coverage.
+    private static func priced(
+        _ id: String,
+        name: String? = nil,
+        prompt: Any?,
+        completion: Any?,
+        extra: [String: String] = [:],
+        context: Int = 128_000,
+        created: Int? = 1_700_000_000,
+        input: [String] = ["text"],
+        output: [String] = ["text"]
+    ) -> Entry {
+        var pricing = extra
+        pricing["prompt"] = Self.literal(prompt)
+        pricing["completion"] = Self.literal(completion)
+        return Entry(
+            id: id,
+            name: name ?? id,
+            context: context,
+            created: created ?? 0,
+            input: input,
+            output: output,
+            pricing: pricing
+        )
+    }
+
+    /// Swift's JSONSerialization distinguishes `0` from `"0"`; the tests must
+    /// too, so numbers stay numbers.
+    private static func literal(_ value: Any?) -> String {
+        switch value {
+        case let number as Int: return "\(number)"
+        case let text as String: return "\"\(text)\""
+        default: return "null"
         }
-        // Built outside the interpolation: an escaped quote inside a
-        // multiline literal's interpolation would reach the JSON verbatim.
-        let inputJSON = input.map { "\"\($0)\"" }.joined(separator: ",")
-        let outputJSON = output.map { "\"\($0)\"" }.joined(separator: ",")
-        return """
-        {"id":"\(id)","name":"\(name ?? id)","created":\(created ?? 0),\
-        "context_length":\(context),\
-        "architecture":{"input_modalities":[\(inputJSON)],\
-        "output_modalities":[\(outputJSON)]},\
-        "pricing":{"prompt":\(quoted(prompt)),"completion":\(quoted(completion))}}
-        """
+    }
+
+    private static func catalog(_ entries: [Entry]) -> Data {
+        func array(_ values: [String]) -> String {
+            "[" + values.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+        }
+        func object(_ pairs: [(String, String)]) -> String {
+            "{" + pairs.map { "\"\($0.0)\":\($0.1)" }.joined(separator: ",") + "}"
+        }
+        let rendered = entries.map { entry in
+            """
+            {"id":"\(entry.id)","name":"\(entry.name)","created":\(entry.created),\
+            "context_length":\(entry.context),\
+            "architecture":{"input_modalities":\(array(entry.input)),\
+            "output_modalities":\(array(entry.output))},\
+            "pricing":\(object(entry.pricing.map { ($0.key, $0.value) }))}
+            """
+        }
+        return Data("{\"data\":[\(rendered.joined(separator: ","))]}".utf8)
     }
 }

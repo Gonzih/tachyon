@@ -117,6 +117,12 @@ appearing for a model already in the catalog. The first reading after
 installing only records a baseline, so enabling this never replays the free
 models that already existed.
 
+Free means **every readable price is `$0`**, not just input and output tokens —
+the catalog also prices images, audio, and web search. A model whose pricing
+cannot be read is tracked separately, so an alert never claims a price drop
+that was not observed. A model missing from a poll keeps its previous state,
+so a truncated response cannot replay the whole catalog as new.
+
 This is a catalog watch, not a usage provider: the endpoint reports no quota,
 spend, or request count, so it never renders a ring. It needs no API key —
 toggle **Settings → OpenRouter → Free model alerts**.

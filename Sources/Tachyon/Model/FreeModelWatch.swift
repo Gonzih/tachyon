@@ -18,23 +18,29 @@ struct FreeModelWatch: Sendable {
     static let interval: TimeInterval = 15 * 60
 
     /// One catalog entry, trimmed to what a notification can honestly show.
-    struct Model: Sendable, Equatable, Codable, Identifiable {
+    struct Model: Sendable, Equatable, Codable {
         let id: String
         let name: String
         let contextLength: Int?
+        /// When OpenRouter listed the entry — not necessarily when the vendor
+        /// released the model.
         let created: Date?
         let inputModalities: [String]
         let outputModalities: [String]
     }
 
-    /// The diff Tachyon reports. Every case means "a model is now $0 that was
-    /// not $0 before" — Tachyon never claims a model left the catalog or that
-    /// it will stay free.
+    /// The diff Tachyon reports. Every case means "this model is $0 now".
+    /// Tachyon never claims a model left the catalog or that it will stay
+    /// free, and `nowFree` deliberately declines to claim a price *drop* it
+    /// could not observe.
     enum Change: Sendable, Equatable {
         /// An id Tachyon had never seen, at $0.
         case newFree(Model)
-        /// A model Tachyon had already seen at a nonzero price, now $0.
+        /// A model Tachyon had already seen at a readable nonzero price, now $0.
         case becameFree(Model)
+        /// A model whose pricing Tachyon could not read before, now $0.
+        /// No transition was observed, so the wording claims only presence.
+        case nowFree(Model)
         /// A `:free` id appeared for a base model already in the catalog.
         case freeVariantAdded(Model)
 
@@ -42,17 +48,26 @@ struct FreeModelWatch: Sendable {
             switch self {
             case .newFree(let model),
                  .becameFree(let model),
+                 .nowFree(let model),
                  .freeVariantAdded(let model):
                 return model
             }
         }
     }
 
-    /// The previous and current catalog. `free` is the full record because a
-    /// notification needs the name and context length; `paid` is ids only.
+    /// One catalog reading, partitioned so every later claim is supportable.
+    /// `free` carries the full record because a notification needs the name and
+    /// context length; the other two are ids only.
+    ///
+    /// `unpriced` exists so a price Tachyon could not read is never mistaken
+    /// for a price that was read and found nonzero.
     struct Snapshot: Sendable, Equatable, Codable {
+        /// Priced $0 for every readable field.
         var free: [String: Model] = [:]
+        /// Priced, and read as nonzero.
         var paid: Set<String> = []
+        /// Listed, but Tachyon could not read its pricing.
+        var unpriced: Set<String> = []
     }
 
     struct Message: Sendable, Equatable {
@@ -96,27 +111,59 @@ struct FreeModelWatch: Sendable {
         }
     }
 
-    /// `$0 prompt` AND `$0 completion` — a model that is free to read but not
-    /// to answer is not free, and neither is a price Tachyon cannot read.
-    /// Those land in `paid` so a later genuine drop still reads as
-    /// BECAME_FREE rather than as a brand-new launch.
+    enum PriceVerdict: Sendable, Equatable {
+        /// Every readable pricing field is exactly zero.
+        case free
+        /// At least one readable field is nonzero — including a negative price,
+        /// which is a router credit, not a free model.
+        case paid
+        /// No readable pricing field at all.
+        case unreadable
+    }
+
+    /// Free means *every* price Tachyon can read is zero, not just the token
+    /// pair. The catalog also carries `image`, `audio`, `audio_output`,
+    /// `web_search` and cache fields, so a model with $0 tokens and a
+    /// per-image fee is not free. Non-numeric entries such as `overrides` are
+    /// skipped: they are not prices.
+    static func price(of entry: JSONValue) -> PriceVerdict {
+        let pricing = entry["pricing"]
+        guard pricing.exists else { return .unreadable }
+        var readAny = false
+        for (_, value) in pricing.dictionary {
+            guard let number = value.double else { continue }
+            readAny = true
+            if number != 0 { return .paid }
+        }
+        return readAny ? .free : .unreadable
+    }
+
+    /// A catalog in which not one price was readable means the schema moved,
+    /// not that every model became free. Returning nil keeps the old baseline
+    /// instead of demoting 22 free models to `unpriced` and re-alerting on the
+    /// next well-formed poll.
     static func parse(_ data: Data) -> Snapshot? {
         let entries = JSONValue.parse(data)["data"].array
         guard !entries.isEmpty else { return nil }
 
         var snapshot = Snapshot()
+        var readAnyPrice = false
         for entry in entries {
             guard let id = entry["id"].string, !id.isEmpty else { continue }
-            if entry["pricing"]["prompt"].double == 0,
-               entry["pricing"]["completion"].double == 0 {
+            switch price(of: entry) {
+            case .free:
+                readAnyPrice = true
                 snapshot.free[id] = model(from: entry, id: id)
-            } else {
+            case .paid:
+                readAnyPrice = true
                 snapshot.paid.insert(id)
+            case .unreadable:
+                snapshot.unpriced.insert(id)
             }
         }
+        guard readAnyPrice else { return nil }
         return snapshot
     }
-
     private static func model(from entry: JSONValue, id: String) -> Model {
         let architecture = entry["architecture"]
         return Model(
@@ -131,6 +178,30 @@ struct FreeModelWatch: Sendable {
 
     // MARK: - Diffing
 
+    /// Absence is not evidence. An id missing from this poll keeps the bucket
+    /// it had last time, so a truncated catalog cannot shrink the baseline and
+    /// make every long-standing free model look new on the next full poll.
+    /// An id present as `paid` still moves out, so a genuine price drop is
+    /// reported.
+    static func merged(current: Snapshot, preserving previous: Snapshot?) -> Snapshot {
+        guard let previous else { return current }
+
+        func isAbsent(_ id: String) -> Bool {
+            current.free[id] == nil
+                && current.paid.contains(id) == false
+                && current.unpriced.contains(id) == false
+        }
+
+        var merged = current
+        // An id present in any current bucket already has a fresh reading and
+        // is never carried forward — otherwise a model the catalog still
+        // reports as paid would land in `free` as well.
+        for (id, model) in previous.free where isAbsent(id) { merged.free[id] = model }
+        for id in previous.paid where isAbsent(id) { merged.paid.insert(id) }
+        for id in previous.unpriced where isAbsent(id) { merged.unpriced.insert(id) }
+        return merged
+    }
+
     /// Nil previous means "first reading ever". OpenRouter already lists a
     /// couple of dozen free models, so the baseline run must stay silent —
     /// otherwise enabling this would bury the user in stale news.
@@ -144,6 +215,7 @@ struct FreeModelWatch: Sendable {
 
     private static func change(for model: Model, in previous: Snapshot) -> Change {
         if previous.paid.contains(model.id) { return .becameFree(model) }
+        if previous.unpriced.contains(model.id) { return .nowFree(model) }
         if let base = freeVariantBase(of: model.id), previous.paid.contains(base) {
             return .freeVariantAdded(model)
         }
@@ -179,6 +251,8 @@ struct FreeModelWatch: Sendable {
             title = "New free model on OpenRouter"
         case .becameFree:
             title = "\(model.name) is now free"
+        case .nowFree:
+            title = "\(model.name) is free on OpenRouter"
         case .freeVariantAdded:
             title = "New free variant: \(model.name)"
         }
@@ -198,7 +272,9 @@ struct FreeModelWatch: Sendable {
             lines.append("\(input) in · \(output) out")
         }
         if let created = model.created {
-            lines.append("Released \(ResetFormat.relative(created, now: now))")
+            // `created` is the catalog entry's timestamp, so this is when
+            // OpenRouter listed it. The vendor may have shipped it earlier.
+            lines.append("Listed \(ResetFormat.relative(created, now: now))")
         }
         lines.append("$0 in · $0 out")
         return lines.joined(separator: "\n")

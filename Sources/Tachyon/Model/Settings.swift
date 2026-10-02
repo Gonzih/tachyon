@@ -192,6 +192,13 @@ enum Settings {
         return (stored as? Bool) ?? defaultValue
     }
 
+    static func setBoolSetting(
+        _ value: Bool, suffix: String, provider id: String,
+        defaults: UserDefaults = Settings.defaults
+    ) {
+        defaults.set(value, forKey: settingKey(suffix, provider: id))
+    }
+
     /// Opaque provider-scoped blobs (an encoded diff baseline, say). The
     /// caller owns the encoding; this only keeps the key namespace in one
     /// place so nothing hand-assembles "provider.<id>.<suffix>".
