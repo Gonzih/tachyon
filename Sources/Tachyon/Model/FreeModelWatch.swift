@@ -229,15 +229,40 @@ struct FreeModelWatch: Sendable {
         return merged
     }
 
-    /// Nil previous means "first reading ever". OpenRouter already lists a
-    /// couple of dozen free models, so the baseline run must stay silent —
-    /// otherwise enabling this would bury the user in stale news.
-    static func changes(from previous: Snapshot?, to current: Snapshot) -> [Change] {
-        guard let previous else { return [] }
+    /// Most free models launch free and never pass through a paid price, so
+    /// "a new id that is already $0" is the primary signal — `becameFree`
+    /// catches only the minority that are repriced down later.
+    static func changes(
+        from previous: Snapshot?,
+        to current: Snapshot,
+        now: Date = Date()
+    ) -> [Change] {
+        guard let previous else { return firstRunChanges(from: current, now: now) }
         return current.free
             .filter { previous.free[$0.key] == nil }
             .map { change(for: $0.value, in: previous) }
             .sorted { $0.model.id < $1.model.id }
+    }
+
+    /// The first reading must not replay the whole catalog — that would bury a
+    /// new user under two dozen models that have been free for months. But a
+    /// model that launched free *today* is exactly the news this feature
+    /// exists to deliver, and silencing it means anyone who installs after a
+    /// launch never hears about it. So a first run speaks up only for models
+    /// the catalog says were added within `firstRunRecency`. An unknown
+    /// `created` never qualifies: Tachyon cannot claim a model is new when the
+    /// timestamp is missing.
+    static let firstRunRecency: TimeInterval = 24 * 60 * 60
+
+    private static func firstRunChanges(from current: Snapshot, now: Date) -> [Change] {
+        current.free.values
+            .filter { model in
+                guard let created = model.created else { return false }
+                let age = now.timeIntervalSince(created)
+                return age >= 0 && age <= firstRunRecency
+            }
+            .sorted { $0.id < $1.id }
+            .map(Change.newFree)
     }
 
     private static func change(for model: Model, in previous: Snapshot) -> Change {

@@ -216,6 +216,64 @@ final class FreeModelWatchTests: XCTestCase {
         XCTAssertEqual(FreeModelWatch.changes(from: nil, to: current), [])
     }
 
+    /// Most free models launch already-free and never pass through a paid
+    /// price, so "a new id at $0" is the signal that matters. Someone who
+    /// installs the day one launches must still hear about it.
+    func testFirstRunAlertsAboutAModelThatLaunchedFreeToday() {
+        let now = Date(timeIntervalSince1970: 1_790_174_884)
+        let fresh = FreeModelWatch.Model(
+            id: "inclusionai/ling-3.1-flash",
+            name: "inclusionAI: Ling 3.1 Flash",
+            contextLength: 262_144,
+            created: now.addingTimeInterval(-3_600),
+            inputModalities: ["text"],
+            outputModalities: ["text"]
+        )
+        let old = model("a/old")
+
+        let changes = FreeModelWatch.changes(
+            from: nil,
+            to: snapshot(free: [fresh.id: fresh, old.id: old], paid: [], unpriced: []),
+            now: now
+        )
+
+        XCTAssertEqual(changes, [.newFree(fresh)])
+    }
+
+    /// A model older than the window is not news, however long it has been free.
+    func testFirstRunIgnoresModelsOlderThanTheRecencyWindow() {
+        let now = Date(timeIntervalSince1970: 1_790_174_884)
+        let stale = FreeModelWatch.Model(
+            id: "a/stale", name: "A Stale", contextLength: nil,
+            created: now.addingTimeInterval(-FreeModelWatch.firstRunRecency - 60),
+            inputModalities: [], outputModalities: []
+        )
+
+        XCTAssertEqual(
+            FreeModelWatch.changes(
+                from: nil, to: snapshot(free: [stale.id: stale], paid: [], unpriced: []), now: now
+            ),
+            []
+        )
+    }
+
+    /// No timestamp means no claim. Tachyon cannot call a model new on the
+    /// strength of a field the catalog did not supply.
+    func testFirstRunStaysSilentWithoutAListingDate() {
+        let now = Date(timeIntervalSince1970: 1_790_174_884)
+        let undated = FreeModelWatch.Model(
+            id: "a/undated", name: "A Undated", contextLength: nil,
+            created: nil, inputModalities: [], outputModalities: []
+        )
+
+        XCTAssertEqual(
+            FreeModelWatch.changes(
+                from: nil, to: snapshot(free: [undated.id: undated], paid: [], unpriced: []), now: now
+            ),
+            []
+        )
+    }
+
     func testDetectsNewFreeModel() {
         let previous = snapshot(free: ["a/one": model("a/one")], paid: ["a/two"], unpriced: [])
         let current = snapshot(
