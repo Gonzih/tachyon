@@ -350,8 +350,8 @@ private struct SettingField: View {
                        defaultValue: defaultValue, onChange: onChange)
         case .toggle(let defaultValue):
             Toggle("", isOn: Binding(
-                get: { Settings.defaults.object(forKey: "provider.\(providerID).\(setting.key)") as? Bool ?? defaultValue },
-                set: { Settings.defaults.set($0, forKey: "provider.\(providerID).\(setting.key)"); onChange() }
+                get: { Settings.boolSetting(setting.key, provider: providerID, default: defaultValue) },
+                set: { Settings.setBoolSetting($0, suffix: setting.key, provider: providerID); onChange() }
             ))
             .toggleStyle(.switch)
             .controlSize(.small)

@@ -177,6 +177,48 @@ enum Settings {
         }
     }
 
+    // MARK: Booleans
+
+    /// Toggle: a missing key is the declared default, never a guessed `false`.
+    /// Only an explicitly stored Bool overrides it.
+    static func boolSetting(
+        _ suffix: String,
+        provider id: String,
+        default defaultValue: Bool,
+        defaults: UserDefaults = Settings.defaults
+    ) -> Bool {
+        guard let stored = defaults.object(forKey: settingKey(suffix, provider: id))
+        else { return defaultValue }
+        return (stored as? Bool) ?? defaultValue
+    }
+
+    static func setBoolSetting(
+        _ value: Bool, suffix: String, provider id: String,
+        defaults: UserDefaults = Settings.defaults
+    ) {
+        defaults.set(value, forKey: settingKey(suffix, provider: id))
+    }
+
+    /// Opaque provider-scoped blobs (an encoded diff baseline, say). The
+    /// caller owns the encoding; this only keeps the key namespace in one
+    /// place so nothing hand-assembles "provider.<id>.<suffix>".
+    static func dataSetting(
+        _ suffix: String, provider id: String, defaults: UserDefaults = Settings.defaults
+    ) -> Data? {
+        defaults.data(forKey: settingKey(suffix, provider: id))
+    }
+
+    static func setDataSetting(
+        _ value: Data?, suffix: String, provider id: String, defaults: UserDefaults = Settings.defaults
+    ) {
+        let key = settingKey(suffix, provider: id)
+        if let value {
+            defaults.set(value, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
     static func setProviderEnabled(_ enabled: Bool, for id: String) {
         defaults.set(enabled, forKey: Key.providerEnabledPrefix + id)
     }

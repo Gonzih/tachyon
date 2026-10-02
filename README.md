@@ -78,6 +78,7 @@ source whose API key is entered explicitly in Settings.
 | Cursor | `api2.cursor.sh` DashboardService, token from `state.vscdb` (read-only) | 120s |
 | Oh My Pi | `~/.omp/agent/agent.db` (read-only): quota windows + `cost_usd` history | 120s |
 | OpenRouter | `openrouter.ai/api/v1/auth/key` — key you add in Settings (Keychain-stored) | 120s |
+| OpenRouter free-model alerts | `openrouter.ai/api/v1/models` (public, no key) | 15 min |
 | Ollama | daemon log (read-only): observed request counts — no quota API exists yet | 120s + on request |
 
 Codex CLI and Codex Desktop are separate sources. The CLI source owns live auth
@@ -94,6 +95,7 @@ Claude's Safe Storage Keychain item, requires an unambiguous session identity,
 then calls Claude's own bootstrap and usage endpoints. It never writes either
 app's files or credentials.
 
+
 Grok Build and Grok Bot are independent products and remain independent rings.
 For Grok Bot, Tachyon reads its bounded encrypted desktop state, asks the app's
 own Safe Storage Keychain item to decrypt the active token in memory, then calls
@@ -104,6 +106,26 @@ Google Antigravity reports account-level quota buckets through AGY's documented
 credentials or Keychain. Because the payload does not identify a desktop or CLI
 surface, Tachyon shows one Antigravity ring with separately labeled Gemini and
 Claude/GPT quotas. AGY CLI must be installed and signed in for the readout.
+
+### Free model alerts
+
+OpenRouter's public model catalog is polled every 15 minutes and diffed
+against the last reading, so Tachyon can notify you when a model that costs
+`$0` to run appears. Three transitions are reported: a brand-new model id at
+`$0`, a model you have already seen dropping to `$0`, and a `:free` variant
+appearing for a model already in the catalog. The first reading after
+installing only records a baseline, so enabling this never replays the free
+models that already existed.
+
+Free means **every readable price is `$0`**, not just input and output tokens —
+the catalog also prices images, audio, and web search. A model whose pricing
+cannot be read is tracked separately, so an alert never claims a price drop
+that was not observed. A model missing from a poll keeps its previous state,
+so a truncated response cannot replay the whole catalog as new.
+
+This is a catalog watch, not a usage provider: the endpoint reports no quota,
+spend, or request count, so it never renders a ring. It needs no API key —
+toggle **Settings → OpenRouter → Free model alerts**.
 
 Providers with separate desktop and CLI readings keep those surfaces separate,
 even when they use the same account or quota pool. The pill keeps its scarce

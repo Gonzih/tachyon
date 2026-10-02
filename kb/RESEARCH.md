@@ -209,6 +209,36 @@ Both endpoints take `Authorization: Bearer <key>`; scopes differ:
   non-empty value is a no-op: no revision bump and no accidental baseline reset.
   A key change during an in-flight read discards that result.
 
+- **Free-model catalog watch (verified live 2026-10-02):** `GET /api/v1/models`
+  needs **no credential** — public, cookie-less, no key required — unlike the two
+  authenticated endpoints above. Every entry carries `id`, `name`, `created`
+  (epoch seconds), `context_length`, `architecture.input_modalities` /
+  `output_modalities`, and `pricing.prompt` / `pricing.completion` as **decimal
+  strings** (`"0"`, `"0.0000015"`) — parse them as numbers, never as text
+  compares. The response is ~760 KB raw / ~80 KB gzipped for 465 entries, which
+  is why the watch polls every 15 min rather than on the 120s provider cadence.
+  A model is free only when **every readable pricing field is `0`**, not just the
+  token pair: the payload also carries `image`, `audio`, `audio_output`,
+  `web_search` and `input_cache_read`, so $0 tokens plus a per-image fee is not
+  free. `overrides` is **not** a non-price — it is a list of tiered price
+  objects (`min_prompt_tokens` plus real `prompt`/`completion` rates); 80 entries
+  carry it, so a $0 base price with a paid tier above a threshold is not free.
+  `min_prompt_tokens` is the one key that is a threshold rather than a price and
+  must be excluded. Some entries carry negative pricing (router credit models)
+  and must not be counted as free.
+  All 22 currently-free entries declare only `prompt`/`completion`, so the extra
+  fields are a latent guard rather than an active filter. If *no* entry yields a
+  readable price the payload has drifted, and the reading is discarded instead of
+  demoting every known free model.
+  ~22 of 465 entries are free, 17 of them `:free`-suffixed variants of a
+  paid base id. This endpoint reports no quota/spend/count, so it is a
+  catalog watch (`FreeModelWatch`), not a `UsageProvider`, and renders no ring.
+- **Absence is not evidence.** The stored baseline is merged with each poll, so a
+  truncated `200` cannot shrink it and make every long-standing free model look
+  new; an id present in any bucket keeps its fresh reading, which keeps every id
+  in exactly one bucket. `created` is when OpenRouter *listed* an entry, not when
+  the vendor released the model, so notifications say "Listed".
+
 ## Competitive field (for positioning)
 
 CodexBar (Swift menu bar, ~90 providers), Limits (Swift menu bar,
